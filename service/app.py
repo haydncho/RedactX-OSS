@@ -139,7 +139,7 @@ def styles():
 
 
 @app.post("/v1/jobs", status_code=202, tags=["任务"], summary="提交异步任务",
-          description="上传文件，立即返回 job_id，后台排队处理。用 GET /v1/jobs/{job_id} 轮询，status 为 succeeded 后下载结果。原件处理完立即删除；options.keep_source 为 true 时另存打码前的页面供复核删框、改框，复核完成或到期时删除。",
+          description="上传文件，立即返回 job_id，后台排队处理。用 GET /v1/jobs/{job_id} 轮询，status 为 succeeded 后下载结果。上传的原文件处理完立即删除；原件预览图（GET /v1/jobs/{job_id}/preview/{page}?v=before，宽度不超过 1400 像素）与结果一起保留到期；options.keep_source 为 true 时另存打码前的页面供复核删框、改框，复核完成或到期时删除。",
           dependencies=[Depends(auth)])
 async def create_job(
     file: UploadFile = File(..., description="PDF、图片或 Word/WPS/Excel/PPT/Markdown/TXT 等文档，按文件头识别真实类型"),
@@ -195,7 +195,7 @@ def get_report(job_id: str = PathParam(..., description="任务 ID")):
     return JSONResponse(json.loads(p.read_text(encoding="utf-8")), headers={"Cache-Control": "no-store"})
 
 
-@app.get("/v1/jobs/{job_id}/preview/{page}", tags=["任务"], summary="页面预览图", description="JPEG，宽度不超过 1400 像素。", dependencies=[Depends(auth)])
+@app.get("/v1/jobs/{job_id}/preview/{page}", tags=["任务"], summary="页面预览图", description="JPEG，宽度不超过 1400 像素。v=before 为原件缩小版，含未脱敏内容，与结果一起保留到期或随任务删除。", dependencies=[Depends(auth)])
 def get_preview(job_id: str = PathParam(..., description="任务 ID"), page: int = PathParam(..., description="页码，从 1 开始"),
                 v: str = Query("after", description="after 脱敏后，before 原件")):
     if v not in ("before", "after"):
