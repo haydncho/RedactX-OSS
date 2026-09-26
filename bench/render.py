@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import ctypes
 import io
+import math
 import random
 from dataclasses import dataclass
 
@@ -17,7 +18,7 @@ import pypdfium2.raw as raw
 from PIL import Image, ImageDraw
 
 from . import fonts
-from .forms import El, Page, seal_rgba
+from .forms import El, Page, measure, seal_rgba
 
 _ASC = 0.88  # 文字对象基线相对字号的位置：让 El.y 大致落在字的顶部
 
@@ -88,8 +89,28 @@ class Writer:
         raw.FPDFPage_InsertObject(page.raw, path)
 
     # ---------- 页面 ----------
-    def text_page(self, p: Page, rng: random.Random, scan_base: bool = False) -> list[Truth]:
-        """系统导出页。scan_base=True 时只画印刷部分（手写与印章留给扫描渲染）。"""
+    def _watermark(self, page, W, H, text: str, size: float, angle: float) -> list[Truth]:
+        """文字层水印：旋转的浅灰半透明文字对象，平铺在页面上。"""
+        out = []
+        c, s = math.cos(math.radians(angle)), math.sin(math.radians(angle))
+        tw = measure(text, size, True)
+        for fx, fy in WATERMARK_GRID:
+            obj = raw.FPDFPageObj_CreateTextObj(self.pdf.raw, self.bold, ctypes.c_float(size))
+            ws = ctypes.create_string_buffer((text + "\0").encode("utf-16-le"))
+            raw.FPDFText_SetText(obj, ctypes.cast(ws, ctypes.POINTER(raw.FPDF_WCHAR)))
+            raw.FPDFPageObj_SetFillColor(obj, 150, 150, 150, 90)
+            # 以水印中心为基准旋转
+            cx, cy = W * fx, H * (1 - fy)
+            x0, y0 = cx - (tw / 2 * c - size / 3 * s), cy - (tw / 2 * s + size / 3 * c)
+            raw.FPDFPageObj_Transform(obj, c, s, -s, c, x0, y0)
+            raw.FPDFPage_InsertObject(page.raw, obj)
+            l, b, r, t = (ctypes.c_float() for _ in range(4))
+            raw.FPDFPageObj_GetBounds(obj, l, b, r, t)
+            out.append(Truth("ORG", "redact", "watermark", _norm((l.value, H - t.value, r.value, H - b.value), W, H), text))
+        return out
+
+    def text_page(self, p: Page, rng: random.Random, scan_base: bool = False, watermark: bool = False) -> list[Truth]:
+        """系统导出页。scan_base=True 时只画印刷部分（手写与印章留给扫描渲染）；watermark=True 时加文字层院名水印。"""
         page = self.pdf.new_page(p.w, p.h)
         W, H = p.w, p.h
         out: list[Truth] = []
@@ -120,6 +141,10 @@ class Writer:
                 bg.paste(s, mask=s.split()[3])
                 self._image(page, H, e.x, e.y, e.w, e.h, bg)
                 out.append(Truth("SEAL", "redact", "seal", _norm((e.x, e.y, e.x + e.w, e.y + e.h), W, H), e.text))
+        if watermark:
+            head = next((e for e in p.els if e.kind == "text" and e.bold and e.truth and e.truth[0] == "ORG"), None)
+            if head:
+                out += self._watermark(page, W, H, head.text, 26, rng.uniform(25, 35))
         page.gen_content()
         return out
 
@@ -157,11 +182,21 @@ def hand_image(text: str, px: int, rng: random.Random, signature: bool = False, 
     return bg, rgba.getbbox() or (0, 0, rgba.width, rgba.height)
 
 
-def hand_rgba(text: str, px: int, rng: random.Random, signature: bool = False, ink=(28, 36, 92)) -> Image.Image:
+def watermark_rgba(text: str, px: int, angle: float, color=(150, 150, 150, 110)) -> Image.Image:
+    """斜向浅灰文字水印。"""
+    path, idx = fonts.bold_font()
+    f = fonts.pil_font(path, idx, px)
+    w = int(f.getlength(text)) + px
+    tile = Image.new("RGBA", (w, int(px * 1.6)), (0, 0, 0, 0))
+    ImageDraw.Draw(tile).text((tile.width / 2, tile.height / 2), text, font=f, fill=color, anchor="mm")
+    return tile.rotate(angle, resample=Image.BICUBIC, expand=True)
+
+
+def hand_rgba(text: str, px: int, rng: random.Random, signature: bool = False, ink=(28, 36, 92), tail: float = 1.0) -> Image.Image:
     path, idx = rng.choice(fonts.hand_fonts()[:3] if signature else fonts.hand_fonts())
     f = fonts.pil_font(path, idx, px)
     step = 0.72 if signature else 0.95
-    canvas = Image.new("RGBA", (int(px * (len(text) * step + 1.4)), int(px * 1.8)), (0, 0, 0, 0))
+    canvas = Image.new("RGBA", (int(px * (len(text) * step + 1.0 + 0.4 * tail)), int(px * 1.8)), (0, 0, 0, 0))
     x = px * 0.3
     for ch in text:
         tile = Image.new("RGBA", (int(px * 1.5), int(px * 1.5)), (0, 0, 0, 0))
@@ -176,7 +211,7 @@ def hand_rgba(text: str, px: int, rng: random.Random, signature: bool = False, i
         # 签名常见的收笔拖尾
         d = ImageDraw.Draw(canvas)
         y = canvas.height * rng.uniform(0.62, 0.75)
-        d.line([(x - px * 0.4, y), (x + px * 0.4, y - px * 0.25)], fill=ink + (230,), width=max(2, px // 18))
+        d.line([(x - px * 0.4, y), (x + px * 0.4 * tail, y - px * 0.25 * tail)], fill=ink + (230,), width=max(2, px // 18))
         canvas = canvas.transform(canvas.size, Image.AFFINE, (1, 0.25, -canvas.height * 0.12, 0, 1, 0), resample=Image.BICUBIC)
     bb = canvas.getbbox()
     return canvas.crop(bb) if bb else canvas
@@ -184,8 +219,17 @@ def hand_rgba(text: str, px: int, rng: random.Random, signature: bool = False, i
 
 # ---------- 扫描件 ----------
 
-def scan_page(p: Page, chars: str, dpi: int, paper: str, rng: random.Random, rotate: bool = False) -> tuple[Image.Image, list[Truth], tuple[float, float]]:
-    """扫描件：印刷底图 + 手写 + 盖章 + 纸张与扫描退化。返回 (整页图, 标准答案, 页面尺寸 pt)。"""
+HARD = {"faint_seal", "watermark", "big_sig"}
+WATERMARK_GRID = [(0.3, 0.3), (0.72, 0.42), (0.3, 0.6), (0.72, 0.75)]  # 水印中心（页面比例）
+
+
+def scan_page(p: Page, chars: str, dpi: int, paper: str, rng: random.Random, rotate: bool = False,
+              hard: frozenset[str] = frozenset()) -> tuple[Image.Image, list[Truth], tuple[float, float]]:
+    """扫描件：印刷底图 + 手写 + 盖章 + 纸张与扫描退化。返回 (整页图, 标准答案, 页面尺寸 pt)。
+
+    hard 可选的难点：faint_seal 压在院名上的淡粉色低饱和印章；watermark 斜向院名水印；
+    big_sig 大号连笔签名（超出签名栏、带拖尾）。
+    """
     w = Writer(chars)
     truths = w.text_page(p, rng, scan_base=True)
     scale = dpi / 72
@@ -195,13 +239,15 @@ def scan_page(p: Page, chars: str, dpi: int, paper: str, rng: random.Random, rot
     items = [(t, [t.box[0] * W, t.box[1] * H, t.box[2] * W, t.box[3] * H]) for t in truths]
     for e in p.els:
         if e.kind == "hand":
-            px = int(e.size * scale * (1.35 if not e.esign else 1.6))
-            rgba = hand_rgba(e.text, px, rng, signature=e.esign)
+            big = e.esign and "big_sig" in hard
+            px = int(e.size * scale * (1.35 if not e.esign else (2.6 if big else 1.6)))
+            rgba = hand_rgba(e.text, px, rng, signature=e.esign, tail=2.5 if big else 1.0)
             x = int(e.x * scale + rng.uniform(0, 0.4) * px)
-            y = int((e.y + e.size * 0.5) * scale - rgba.height / 2 + rng.uniform(-0.12, 0.12) * px)
+            # 大号签名常常压过签名栏的上沿
+            y = int((e.y + e.size * 0.5) * scale - rgba.height * (0.62 if big else 0.5) + rng.uniform(-0.12, 0.12) * px)
             im.paste(rgba, (x, y), rgba)
-            t = e.truth or ("PERSON", "redact")
-            items.append((Truth(t[0], t[1], "hand", [], e.text), [x, y, x + rgba.width, y + rgba.height]))
+            if e.truth:
+                items.append((Truth(e.truth[0], e.truth[1], "hand", [], e.text), [x, y, x + rgba.width, y + rgba.height]))
         elif e.kind == "seal":
             size = int(e.w * scale)
             s = seal_rgba(e.text, size).rotate(rng.uniform(-18, 18), resample=Image.BICUBIC, expand=False)
@@ -209,6 +255,28 @@ def scan_page(p: Page, chars: str, dpi: int, paper: str, rng: random.Random, rot
             _multiply(im, s, x, y, alpha=rng.uniform(0.7, 0.92))
             bb = s.getbbox() or (0, 0, size, size)
             items.append((Truth("SEAL", "redact", "seal", [], e.text), [x + bb[0], y + bb[1], x + bb[2], y + bb[3]]))
+    if "faint_seal" in hard:
+        # 淡粉色、饱和度很低的圆章，压在页眉院名的末尾
+        head = next((e for e in p.els if e.kind == "text" and e.bold and e.truth and e.truth[0] == "ORG"), None)
+        if head:
+            size = int(1.3 * 72 / 2.54 * scale * 3)  # 直径约 3.9 cm
+            s = seal_rgba(head.text, size, color=(236, 168, 184, 200)).rotate(rng.uniform(-25, 25), resample=Image.BICUBIC)
+            cx = (head.x + measure(head.text, head.size, True)) * scale
+            cy = (head.y + head.size * 0.5) * scale
+            x, y = int(cx - size * 0.55), int(cy - size * 0.5)
+            _multiply(im, s, x, y, alpha=rng.uniform(0.55, 0.7))
+            bb = s.getbbox() or (0, 0, size, size)
+            items.append((Truth("SEAL", "redact", "faint", [], head.text), [x + bb[0], y + bb[1], x + bb[2], y + bb[3]]))
+    if "watermark" in hard:
+        # 平铺的斜向院名水印，压在正文上
+        head = next((e for e in p.els if e.kind == "text" and e.bold and e.truth and e.truth[0] == "ORG"), None)
+        if head:
+            wm = watermark_rgba(head.text, int(26 * scale), angle=rng.uniform(25, 35))
+            bb = wm.getbbox() or (0, 0, wm.width, wm.height)
+            for fx, fy in WATERMARK_GRID:
+                x, y = int(W * fx - wm.width / 2), int(H * fy - wm.height / 2)
+                _multiply(im, wm, x, y, alpha=1.0)
+                items.append((Truth("ORG", "redact", "watermark", [], head.text), [x + bb[0], y + bb[1], x + bb[2], y + bb[3]]))
     arr, M = _degrade(np.asarray(im), paper, rng)
     boxes = [_affine_box(b, M) for _, b in items]
     w_pt, h_pt = p.w, p.h
@@ -268,3 +336,45 @@ def _affine_box(b, M) -> list[float]:
     pts = np.array([[x0, y0, 1], [x1, y0, 1], [x0, y1, 1], [x1, y1, 1]], np.float32) @ M.T
     return [float(pts[:, 0].min()), float(pts[:, 1].min()), float(pts[:, 0].max()), float(pts[:, 1].max())]
 
+
+
+# ---------- MRC 分层压缩 ----------
+
+def write_mrc_pdf(pages: list[tuple[Image.Image, float, float]], path, bg_dpi_ratio: float = 0.5) -> None:
+    """按复印机 MRC 方式写 PDF：低分辨率彩色底图（JPEG）+ 全分辨率 1 位文字蒙版（ImageMask，涂黑色）。
+
+    文字与手写都进蒙版并变成纯黑；印章等彩色、浅色内容只留在低分辨率底图里。
+    """
+    import zlib
+
+    import pikepdf
+
+    pdf = pikepdf.new()
+    for im, w_pt, h_pt in pages:
+        arr = np.asarray(im.convert("RGB"))
+        gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+        ink = gray < 110
+        # 底图：抹掉文字后缩小，文字处用周边颜色填充
+        bg = cv2.inpaint(arr, cv2.dilate(ink.astype(np.uint8), np.ones((3, 3), np.uint8)), 3, cv2.INPAINT_TELEA)
+        bg = cv2.resize(bg, None, fx=bg_dpi_ratio, fy=bg_dpi_ratio, interpolation=cv2.INTER_AREA)
+        buf = io.BytesIO()
+        Image.fromarray(bg).save(buf, "JPEG", quality=55)
+        bg_img = pikepdf.Stream(pdf, buf.getvalue())
+        bg_img.Type, bg_img.Subtype = pikepdf.Name.XObject, pikepdf.Name.Image
+        bg_img.Width, bg_img.Height = bg.shape[1], bg.shape[0]
+        bg_img.ColorSpace, bg_img.BitsPerComponent, bg_img.Filter = pikepdf.Name.DeviceRGB, 8, pikepdf.Name.DCTDecode
+        # 蒙版：ImageMask 的 0 表示涂色，所以墨迹处为 0
+        bits = np.packbits(~ink, axis=1)
+        mask = pikepdf.Stream(pdf, zlib.compress(bits.tobytes()))
+        mask.Type, mask.Subtype = pikepdf.Name.XObject, pikepdf.Name.Image
+        mask.Width, mask.Height = ink.shape[1], ink.shape[0]
+        mask.ImageMask, mask.BitsPerComponent, mask.Filter = True, 1, pikepdf.Name.FlateDecode
+        content = f"q {w_pt:.2f} 0 0 {h_pt:.2f} 0 0 cm /Bg Do Q q 0 g {w_pt:.2f} 0 0 {h_pt:.2f} 0 0 cm /Fg Do Q".encode()
+        page = pikepdf.Dictionary(
+            Type=pikepdf.Name.Page,
+            MediaBox=[0, 0, w_pt, h_pt],
+            Resources=pikepdf.Dictionary(XObject=pikepdf.Dictionary(Bg=bg_img, Fg=mask)),
+            Contents=pikepdf.Stream(pdf, content),
+        )
+        pdf.pages.append(pikepdf.Page(page))
+    pdf.save(str(path))

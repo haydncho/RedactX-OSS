@@ -55,3 +55,15 @@ def test_summarize_recall():
     s = metrics.summarize(scored)
     assert s["PERSON"]["recall"] == 0.5 and s["PERSON"]["miss"] == 1
     assert s["DATE"]["recall"] is None and s["DATE"]["over"] == 1
+
+
+def test_watermark_erase_not_counted_as_over():
+    # 水印消除只擦水印像素：框住日期也不算误遮，但算作水印已消除
+    truth = _truth(
+        {"type": "DATE", "role": "keep", "box": [0.1, 0.3, 0.3, 0.32]},
+        {"type": "ORG", "role": "redact", "box": [0.05, 0.25, 0.5, 0.4], "form": "watermark"},
+    )
+    report = {"items": [{"page": 1, "type": "ORG", "source": "watermark", "box": [0.05, 0.25, 0.5, 0.4]}]}
+    scored = metrics.score_doc(truth, report)
+    assert _status(scored) == [("DATE", "kept"), ("ORG", "full")]
+    assert scored["extras"] == []

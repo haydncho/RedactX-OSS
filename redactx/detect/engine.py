@@ -8,7 +8,7 @@ from rapidfuzz.distance import Hamming
 
 from ..schemas import Hit, PageData
 from . import rules
-from .anchors import anchor
+from .anchors import anchor, date_signatures
 from .lexicon import STOP_WORDS
 
 SEED_TYPES = {"PERSON", "STAFF", "ORG", "ID_CARD", "PHONE", "MEDICAL_ID", "BANK_CARD", "USCC", "CUSTOM"}
@@ -29,6 +29,8 @@ def page_hits(page: PageData, enabled: set[str], custom: list[str]):
                     hits.append(Hit("CUSTOM", "custom", page.index, li, m.start(), m.end(), w))
     ahits, fields = anchor(page, enabled)
     hits.extend(ahits)
+    if "SIGNATURE" in enabled:
+        fields.extend(date_signatures(page))
     return hits, fields
 
 

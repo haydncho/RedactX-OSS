@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass, field
+from datetime import timedelta
 
 import cv2
 import numpy as np
@@ -51,7 +52,8 @@ class Page:
 
     def hand(self, x, y, s, size=10.5, truth=None, esign=False) -> float:
         self.els.append(El("hand", x, y, s, size, truth=truth, esign=esign))
-        return x + measure(s, size) * 1.4
+        # 手写体每个字（含数字）按固定字距排开，再加上扫描渲染时的随机右移
+        return x + len(s) * size * 1.3 + size * 0.8
 
     def field(self, x, y, label, value, size=10.5, truth=None, hand=False, esign=False, sep="", gap=5.0) -> float:
         x = self.text(x, y, label + sep, size) + gap
@@ -127,11 +129,11 @@ def photo(rng: random.Random, w=400, h=300) -> Image.Image:
     return Image.fromarray(np.clip(img, 0, 255).astype(np.uint8))
 
 
-def seal_rgba(text: str, px: int = 360, center: str = "★") -> Image.Image:
-    """圆形红章：外圈、环形文字、中央五角星。"""
+def seal_rgba(text: str, px: int = 360, color=(212, 32, 44, 235)) -> Image.Image:
+    """圆形印章：外圈、环形文字、中央五角星。默认红色。"""
     im = Image.new("RGBA", (px, px), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
-    red = (212, 32, 44, 235)
+    red = color
     c = px / 2
     d.ellipse((6, 6, px - 6, px - 6), outline=red, width=int(px * 0.035))
     # 五角星
@@ -312,6 +314,64 @@ def endoscopy(c: Case, logo_img, rng: random.Random) -> Page:
     return p
 
 
+def daily_note(c: Case, logo_img) -> Page:
+    """日常病程记录（手写）：只用于扫描件。手写的日期、诊断必须保留；各种写法的医师签名必须遮盖。"""
+    p = Page("日常病程记录")
+    _header(p, c, "日常病程记录", logo_img)
+    y = 112
+    p.field(40, y, "姓名", c.patient, truth=("PERSON", "redact"), sep="：", gap=1)
+    p.field(170, y, "科别", c.dept, sep="：", gap=1)
+    p.field(300, y, "床号", c.bed, truth=("MEDICAL_ID", "redact"), sep="：", gap=1)
+    p.field(390, y, "住院号", c.inpatient_no, truth=("MEDICAL_ID", "redact"), sep="：", gap=1)
+    p.line(40, y + 18, p.w - 40, y + 18)
+    D, K, S = ("DATE", "keep"), ("DIAGNOSIS", "keep"), ("SIGNATURE", "redact")
+    d1, d2, d3 = (fmt_date(c.admit + timedelta(days=k)) for k in (1, 2, 3))
+    y = 150
+    # 1. 手写日期 + 查房记录；“医师：”不在签名标签词表里
+    p.hand(52, y, d1.replace("年", ".").replace("月", ".").rstrip("日"), truth=D)
+    p.hand(190, y, "主治医师查房记录")
+    y += 30
+    p.hand(52, y, "患者一般情况可，血糖控制平稳，继续当前治疗。")
+    y += 30
+    p.text(52, y, "诊断：")
+    p.hand(52 + measure("诊断：", 10.5) + 4, y, c.diagnosis[0], truth=K)
+    y += 30
+    p.field(330, y, "医师", c.staff["主治医师"], truth=S, hand=True, esign=True, sep="：", gap=4)
+    y += 44
+    # 2. “医师签名：”后面先是打印日期，再签名
+    p.hand(52, y, d2.replace("年", ".").replace("月", ".").rstrip("日"), truth=D)
+    p.hand(190, y, "今日复查血常规未见明显异常。")
+    y += 30
+    x = p.text(300, y, "医师签名：")
+    x = p.text(x + 4, y, d2, truth=D)
+    p.hand(x + 10, y, c.staff["住院医师"], truth=S, esign=True)
+    y += 44
+    # 3. 空着的签名栏，正下方手写补充诊断
+    p.text(52, y, "医师签名：")
+    y += 26
+    p.text(52, y, "补充诊断：")
+    p.hand(52 + measure("补充诊断：", 10.5) + 4, y, "高脂血症", truth=K)
+    y += 44
+    # 4. 手写日期后面直接签名，没有标签
+    p.hand(52, y, d3.replace("年", ".").replace("月", ".").rstrip("日"), truth=D)
+    p.hand(190, y, "上级医师查房，同意目前诊疗方案。")
+    y += 30
+    x = p.hand(330, y, d3.replace("年", ".").replace("月", ".").rstrip("日"), truth=D)
+    p.hand(x + 6, y, c.staff["科主任"], truth=S, esign=True)
+    y += 44
+    # 5. “上级医师签名：”
+    p.field(300, y, "上级医师签名", c.staff["主任医师"], truth=S, hand=True, esign=True, sep="：", gap=4)
+    y += 44
+    # 6. “患者”“医生”后面不带冒号、紧跟手写姓名；下一行印刷正文里的“患者”“医生”不应触发
+    p.field(52, y, "患者", c.patient, truth=("PERSON", "redact"), hand=True, gap=2)
+    p.field(300, y, "医生", c.staff["住院医师"], truth=("STAFF", "redact"), hand=True, gap=2)
+    y += 30
+    p.text(52, y, "患者病情平稳，医生建议明日出院。")
+    _footer(p, c, 5)
+    return p
+
+
 def case_pages(c: Case) -> list[Page]:
+    """前 4 页各形态通用；第 5 页为手写病程，只有扫描类形态会用到（见 make.VARIANTS）。"""
     lg = logo(c.hospital)
-    return [front_page(c, lg), lab_report(c, lg, c.rng), progress_note(c, lg), endoscopy(c, lg, c.rng)]
+    return [front_page(c, lg), lab_report(c, lg, c.rng), progress_note(c, lg), endoscopy(c, lg, c.rng), daily_note(c, lg)]

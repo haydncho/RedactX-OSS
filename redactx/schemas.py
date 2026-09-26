@@ -19,6 +19,7 @@ class Char:
 class Line:
     chars: list[Char]
     source: Literal["text", "ocr"]
+    angle: float = 0.0  # 文字行的倾斜角（度，顺时针为正），斜向水印据此识别
 
     @property
     def text(self) -> str:
