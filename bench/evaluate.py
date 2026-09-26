@@ -1,6 +1,6 @@
 """在合成评估集上跑脱敏流水线并打分。
 
-    python -m bench.evaluate --data bench/out [--verify] [--keep-output]
+    python -m bench.evaluate --data bench/out [--verify auto|on|off] [--keep-output]
 
 输出：终端汇总表，以及 <data>/results/summary.md 与 results.json（含每一处漏遮与误遮）。
 """
@@ -53,7 +53,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="在合成评估集上跑脱敏流水线并打分")
     ap.add_argument("--data", default="bench/out", type=Path)
     ap.add_argument("--only", default="", help="只跑名称包含该字符串的文档")
-    ap.add_argument("--verify", action="store_true", help="开启出厂自检")
+    ap.add_argument("--verify", choices=["auto", "on", "off"], default="auto", help="出厂自检：auto 只自检扫描页（默认）")
     ap.add_argument("--mode", default="strict", choices=["strict", "balanced"])
     ap.add_argument("--keep-output", action="store_true", help="保留脱敏输出与报告，便于用 bench.show 查看")
     args = ap.parse_args()
@@ -73,7 +73,7 @@ def main() -> None:
         work = res_dir / "work" / pdf.stem
         shutil.rmtree(work, ignore_errors=True)
         t0 = time.time()
-        report = run(pdf, work, Options(verify=args.verify, mode=args.mode))
+        report = run(pdf, work, Options(verify=args.verify if args.verify == "auto" else args.verify == "on", mode=args.mode))
         elapsed = time.time() - t0
         scored = metrics.score_doc(truth, report, _aspects(pdf))
         for it in scored["items"]:
@@ -104,7 +104,7 @@ def main() -> None:
         return [sum(d["extras"] for d in ds), f"{sum(d['elapsed'] for d in ds) / max(pages, 1):.1f}"]
 
     lines = ["# 合成评估集结果", "", f"文档 {len(per_doc)} 份，共 {sum(d['pages'] for d in per_doc)} 页；"
-             f"自检{'开启' if args.verify else '关闭'}；模式 {args.mode}。", ""]
+             f"自检 {args.verify}；模式 {args.mode}。", ""]
     lines += ["## 按形态", ""] + _table("形态", by_variant, extra_cols=(["多遮", "秒/页"], variant_extra)) + [""]
     lines += ["## 按实体类型", ""] + _table("类型", dict(sorted(by_type.items(), key=lambda kv: (kv[1]["redact"] == 0, kv[0]))),
                                            label=lambda k: NAMES.get(k, k)) + [""]
