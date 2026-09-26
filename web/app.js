@@ -397,7 +397,7 @@
   }
 
   // ---------- 复核：拖出新框；保留原件的任务还可点选后拖动、拉伸、删除 ----------
-  let reviewing = false, draft = null, sel = null, dirty = 0, viewBefore = null;
+  let reviewing = false, draft = null, sel = null, dirty = 0, viewBefore = null, exportEnabled = false;
   const editable = () => !!report?.review?.editable;
   const canEdit = (it) => editable() || !!it._new;
 
@@ -430,6 +430,9 @@
     $("#rv-save").disabled = !dirty;
     const d = $("#rv-dirty"); d.textContent = dirty ? `未保存 ${dirty} 处修改` : "没有修改"; d.classList.toggle("on", !!dirty);
     $("#rv-finish").hidden = !editable();
+    $("#rv-export").hidden = !(exportEnabled && editable());
+    $("#rv-export").disabled = !!dirty;
+    $("#rv-export").title = dirty ? "先保存修改再导出" : "打码前的原始页面与复核后的框（COCO 格式），供训练检测模型；含真实内容";
   }
 
   const touched = () => { dirty++; syncReview(); renderBoxes(); };
@@ -464,6 +467,15 @@
     $("#rv-cancel").onclick = () => { if (!dirty || confirm("放弃未保存的修改？")) stopReview(); };
     $("#rv-del").onclick = deleteSel;
     $("#rv-save").onclick = saveReview;
+    $("#rv-export").onclick = async () => {
+      try {
+        const r = await api(`/v1/jobs/${job.id}/export`);
+        const url = URL.createObjectURL(await r.blob());
+        const a = el("a", { href: url, download: `annotations-${job.id}.zip` });
+        document.body.append(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      } catch (e) { toast(e.message); }
+    };
     const dlgFin = $("#dlg-finish");
     $("#rv-finish").onclick = () => { dlgFin.returnValue = ""; dlgFin.showModal(); };
     dlgFin.addEventListener("close", async () => {
@@ -721,7 +733,7 @@
   // ---------- 启动 ----------
   async function init() {
     // 标题后显示服务版本（/v1/health 不需要 API Key）
-    fetch("/v1/health").then((r) => r.json()).then((h) => { const v = $("#brand-ver"); v.textContent = `v${h.version}`; v.hidden = false; }).catch(() => {});
+    fetch("/v1/health").then((r) => r.json()).then((h) => { const v = $("#brand-ver"); v.textContent = `v${h.version}`; v.hidden = false; exportEnabled = !!h.export; }).catch(() => {});
     try {
       catalog = await (await api("/v1/catalog")).json();
     } catch (e) {

@@ -64,3 +64,23 @@ def test_invalid_items(tmp_path):
                 [{"page": 1, "type": "PERSON", "box": [0.5, 0.5, 0.5, 0.6]}], "x"):
         with pytest.raises(review.ReviewError):
             review.apply(out, bad)
+
+
+def test_export_coco(tmp_path):
+    import zipfile
+
+    out, item = _job(tmp_path, editable=True)
+    dest = review.export(out, tmp_path / "e.zip")
+    with zipfile.ZipFile(dest) as z:
+        names = z.namelist()
+        coco = json.loads(z.read("annotations.json"))
+    assert "images/page-0001.jpg" in names
+    ann = coco["annotations"][0]
+    assert ann["bbox"] == [20.0, 40.0, 60.0, 20.0]  # box [0.1, 0.1333, 0.4, 0.2] × 200×300
+    assert any(c["name"] == "PERSON" and c["id"] == ann["category_id"] for c in coco["categories"])
+
+
+def test_export_needs_source(tmp_path):
+    out, _ = _job(tmp_path, editable=False)
+    with pytest.raises(review.ReviewError):
+        review.export(out, tmp_path / "e.zip")

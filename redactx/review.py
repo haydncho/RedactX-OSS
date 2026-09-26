@@ -119,6 +119,41 @@ def apply(out_dir: Path, raw_items) -> dict:
     return report
 
 
+def export(out_dir: Path, dest: Path) -> Path:
+    """导出标注：打码前的原始页面与复核后的全部框，COCO 格式（bbox 为像素 [x, y, 宽, 高]）。
+    只有保留原件、尚未完成复核的任务可以导出。导出包含真实内容，调用方负责只在授权的标注环境里使用。"""
+    import zipfile
+
+    orig = out_dir / "orig"
+    if not orig.is_dir():
+        raise ReviewError("NOT_EDITABLE", "本任务未保留原件或已完成复核，没有可导出的原始页面")
+    report = json.loads((out_dir / "report.json").read_text(encoding="utf-8"))
+    cat_id = {c: k + 1 for k, c in enumerate(sorted(ENTITY_BY_CODE))}
+    images, anns = [], []
+    with zipfile.ZipFile(dest, "w", zipfile.ZIP_STORED) as z:
+        for p in range(1, report["pages"] + 1):
+            src = orig / f"{p:05d}.jpg"
+            if not src.exists():
+                continue
+            with Image.open(src) as im:
+                w, h = im.size
+            name = f"images/page-{p:04d}.jpg"
+            z.write(src, name)
+            images.append({"id": p, "file_name": name, "width": w, "height": h})
+            for it in report["items"]:
+                if it["page"] != p or it.get("style") == "watermark":
+                    continue
+                x0, y0, x1, y1 = it["box"]
+                bw, bh = (x1 - x0) * w, (y1 - y0) * h
+                anns.append({"id": len(anns) + 1, "image_id": p, "category_id": cat_id[it["type"]], "bbox": [round(x0 * w, 1), round(y0 * h, 1), round(bw, 1), round(bh, 1)],
+                             "area": round(bw * bh, 1), "iscrowd": 0, "source": it.get("source")})
+        coco = {"info": {"description": "RedactX 复核标注", "reviewed_edits": report.get("review", {}).get("edits", 0)},
+                "images": images, "annotations": anns,
+                "categories": [{"id": cat_id[c], "name": c, "zh": ENTITY_BY_CODE[c]["name"]} for c in sorted(ENTITY_BY_CODE)]}
+        z.writestr("annotations.json", json.dumps(coco, ensure_ascii=False, indent=1))
+    return dest
+
+
 def finish(out_dir: Path) -> dict:
     """复核完成：删除打码前的页面，之后只能再加框。"""
     shutil.rmtree(out_dir / "orig", ignore_errors=True)

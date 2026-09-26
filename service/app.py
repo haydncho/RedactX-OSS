@@ -14,6 +14,7 @@ from pathlib import Path
 from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, Path as PathParam, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.background import BackgroundTask
 from fastapi.staticfiles import StaticFiles
 
 from redactx import __version__, review
@@ -120,7 +121,7 @@ async def http_error(_, exc: HTTPException):
 
 @app.get("/v1/health", tags=["系统"], summary="服务状态", description="返回版本号、是否找到打码标签字体、默认渲染分辨率。不需要 API Key。")
 def health():
-    return {"status": "ok", "version": __version__, "font": bool(settings.font_path), "dpi": settings.render_dpi}
+    return {"status": "ok", "version": __version__, "font": bool(settings.font_path), "dpi": settings.render_dpi, "export": settings.allow_export}
 
 
 @app.get("/v1/catalog", tags=["目录"], summary="完整目录", description="实体分组、实体类型、打码样式与场景预设。Web 页据此生成设置面板。", dependencies=[Depends(auth)])
@@ -228,6 +229,23 @@ async def put_review(job_id: str = PathParam(..., description="任务 ID"), body
         return await run_in_threadpool(store.review, job_id, review.apply, body.get("items"))
     except review.ReviewError as e:
         error(409 if e.code == "NOT_EDITABLE" else 400, e.code, str(e))
+
+
+@app.get("/v1/jobs/{job_id}/export", tags=["复核"], summary="导出标注",
+         description="打码前的原始页面与复核后的全部框（COCO 格式），供训练检测模型。含真实病案内容：服务端设置 REDACTX_ALLOW_EXPORT=1 才可用，"
+                     "且只有保留原件、尚未完成复核的任务可以导出。", dependencies=[Depends(auth)])
+async def export_annotations(job_id: str = PathParam(..., description="任务 ID")):
+    if not settings.allow_export:
+        error(403, "EXPORT_DISABLED", "未开启标注导出（服务端设置 REDACTX_ALLOW_EXPORT=1 才可用）")
+    _review_job(job_id)
+    dest = store.dir(job_id) / "out" / "export.zip"
+    try:
+        await run_in_threadpool(review.export, store.dir(job_id) / "out", dest)
+    except review.ReviewError as e:
+        error(409, e.code, str(e))
+    log.info("job %s annotations exported", job_id)
+    return FileResponse(dest, media_type="application/zip", filename=f"annotations-{job_id}.zip", headers={"Cache-Control": "no-store"},
+                        background=BackgroundTask(dest.unlink, missing_ok=True))
 
 
 @app.post("/v1/jobs/{job_id}/review/finish", tags=["复核"], summary="复核完成",
