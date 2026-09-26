@@ -14,6 +14,18 @@
     return n;
   };
 
+  // 图标：引用 index.html 里定义的 <symbol>
+  const icon = (name) => {
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("class", "ic");
+    svg.setAttribute("aria-hidden", "true");
+    const use = document.createElementNS(NS, "use");
+    use.setAttribute("href", `#i-${name}`);
+    svg.append(use);
+    return svg;
+  };
+
   const STORE_KEY = "redactx.settings.v1";
   const KEY_KEY = "redactx.apikey";
   const store = {
@@ -450,7 +462,7 @@
           el("span", { class: "when num", text: when }),
           el("span", { text: `${(j.input_ext || "").toUpperCase()} · ${j.pages ?? "?"} 页${total != null ? ` · 遮盖 ${total} 处` : ""}` }),
           el("span", { class: `status ${j.status}`, text: ST[j.status] || j.status }),
-          j.status === "succeeded" ? el("button", { type: "button", text: "查看", onclick: () => openJob(j.id, j.input_ext) }) : el("span")));
+          j.status === "succeeded" ? el("button", { type: "button", onclick: () => openJob(j.id, j.input_ext) }, icon("eye"), "查看") : el("span")));
       }
     } catch (e) {
       if (e.status === 401) toast("需要 API Key，请点右上角设置");
@@ -508,14 +520,14 @@
     window.addEventListener("drop", (e) => { e.preventDefault(); if (!$("#drop").hidden) return; const f = e.dataTransfer.files[0]; if (f) upload(f); });
 
     $("#btn-new").onclick = () => { clearTimeout(pollTimer); $("#job").hidden = true; $("#drop").hidden = false; job = null; report = null; };
-    $("#btn-delete").onclick = async () => {
-      if (!job?.id) return;
-      const btn = $("#btn-delete");
-      if (btn.dataset.confirm !== "1") { btn.dataset.confirm = "1"; btn.textContent = "再点一次确认删除"; setTimeout(() => { btn.dataset.confirm = ""; btn.textContent = "删除结果"; }, 3000); return; }
-      try { await api(`/v1/jobs/${job.id}`, { method: "DELETE" }); toast("已删除脱敏结果与预览"); } catch (e) { toast(e.message); }
-      btn.dataset.confirm = ""; btn.textContent = "删除结果";
+    // 删除前弹出确认框；默认焦点在“取消”上
+    const dlgDel = $("#dlg-delete");
+    $("#btn-delete").onclick = () => { if (job?.id) { dlgDel.returnValue = ""; dlgDel.showModal(); } };
+    dlgDel.addEventListener("close", async () => {
+      if (dlgDel.returnValue !== "ok" || !job?.id) return;
+      try { await api(`/v1/jobs/${job.id}`, { method: "DELETE" }); toast("已删除脱敏结果与预览"); } catch (e) { toast(e.message); return; }
       $("#btn-new").click(); refreshHistory();
-    };
+    });
     $("#pg-prev").onclick = () => gotoPage(page - 1);
     $("#pg-next").onclick = () => gotoPage(page + 1);
     $("#show-boxes").onchange = renderBoxes;
