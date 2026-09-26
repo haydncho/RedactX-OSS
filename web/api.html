@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>接口文档 · 锐消 RedactX</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='5' y='3' width='22' height='26' rx='3' fill='%230B6F6A'/%3E%3Crect x='9' y='9' width='14' height='3' rx='1.5' fill='%23fff'/%3E%3Crect x='9' y='15' width='9' height='3' rx='1.5' fill='%23ECEBFC'/%3E%3Crect x='9' y='21' width='12' height='3' rx='1.5' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/api.css">
+</head>
+<body class="api-page">
+<svg class="sprite" aria-hidden="true" focusable="false"><defs>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+  <symbol id="i-json" viewBox="0 0 24 24"><path d="M8 4H7a2 2 0 0 0-2 2v4l-2 2 2 2v4a2 2 0 0 0 2 2h1M16 4h1a2 2 0 0 1 2 2v4l2 2-2 2v4a2 2 0 0 1-2 2h-1"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2V5Z"/><path d="M4 19a2 2 0 0 1 2-2h13v4H6a2 2 0 0 1-2-2Z"/></symbol>
+</defs></svg>
+
+<header class="topbar">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="5" y="3" width="22" height="26" rx="3" class="mark-doc"/><rect x="9" y="9" width="14" height="3" rx="1.5" class="mark-line"/><rect x="9" y="15" width="9" height="3" rx="1.5" class="mark-pill"/><rect x="9" y="21" width="12" height="3" rx="1.5" class="mark-line"/></svg>
+    <span class="brand-cn">锐消</span><span class="brand-sep" aria-hidden="true">/</span><span class="brand-en">接口文档</span>
+  </div>
+  <div class="topbar-right">
+    <a class="toplink" href="/openapi.json" target="_blank" rel="noopener"><svg class="ic" aria-hidden="true"><use href="#i-json"/></svg>openapi.json</a>
+    <a class="nav-btn" href="/"><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg>返回控制台</a>
+  </div>
+</header>
+
+<div class="api-layout">
+  <nav class="api-nav" id="api-nav" aria-label="接口目录"></nav>
+  <main class="api-main" id="api-main">
+    <section class="api-intro">
+      <span class="eyebrow">REST API</span>
+      <h1 id="api-title">锐消 RedactX 接口</h1>
+      <p id="api-desc"></p>
+      <dl class="api-facts">
+        <div><dt>基础地址</dt><dd><code id="api-base"></code></dd></div>
+        <div><dt>版本</dt><dd><code id="api-version"></code></dd></div>
+        <div><dt>数据格式</dt><dd>请求为 multipart/form-data 或查询参数；响应为 JSON、PDF 或图片</dd></div>
+      </dl>
+    </section>
+
+    <section class="api-card" id="sec-auth">
+      <h2><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg>认证</h2>
+      <p>服务端设置了环境变量 <code>REDACTX_API_KEY</code> 时，除 <code>/v1/health</code> 外的所有接口都要带请求头 <code>X-API-Key</code>，否则返回 401。未设置时无需认证。服务默认只绑定本机回环地址。</p>
+    </section>
+
+    <section class="api-card" id="sec-errors">
+      <h2><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>错误格式</h2>
+      <p>出错时返回对应的 HTTP 状态码，响应体统一为：</p>
+      <pre class="code"><code>{"error": {"code": "NOT_FOUND", "message": "任务不存在或已过期删除"}}</code></pre>
+      <table class="api-table">
+        <thead><tr><th>状态码</th><th>code</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>400</td><td><code>INVALID_FILE</code> <code>INVALID_OPTIONS</code> <code>CONVERT_FAILED</code> 等</td><td>文件无法识别、选项不合法、文档转换失败、加密 PDF 密码错误</td></tr>
+          <tr><td>401</td><td><code>BAD_API_KEY</code></td><td>API Key 缺失或不正确</td></tr>
+          <tr><td>404</td><td><code>NOT_FOUND</code></td><td>任务、报告或预览不存在（可能已到期删除）</td></tr>
+          <tr><td>409</td><td><code>NOT_READY</code> <code>BUSY</code></td><td>任务尚未完成；或正在处理，暂不能删除</td></tr>
+          <tr><td>413</td><td><code>TOO_LARGE</code></td><td>超出上传大小、页数上限，或同步接口的 10 页 / 20 MB 限制</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="api-card" id="sec-options">
+      <h2><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg>options 字段</h2>
+      <p><code>POST /v1/jobs</code> 与 <code>POST /v1/redact</code> 的 <code>options</code> 表单字段是一个 JSON 字符串，所有字段都可省略。</p>
+      <table class="api-table">
+        <thead><tr><th>字段</th><th>类型</th><th>默认</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td><code>entities</code></td><td>string[]</td><td>病案审核默认勾选</td><td>要遮盖的实体类型 code，见下方“实体类型”</td></tr>
+          <tr><td><code>default_style</code></td><td>string</td><td><code>label</code></td><td>默认打码样式 code，见下方“打码样式”</td></tr>
+          <tr><td><code>styles</code></td><td>object</td><td><code>{}</code></td><td>按实体类型单独指定样式，如 <code>{"SIGNATURE": "hatch"}</code></td></tr>
+          <tr><td><code>custom_words</code></td><td>string[]</td><td><code>[]</code></td><td>额外要遮盖的词（每个至少 2 个字），如院区名称</td></tr>
+          <tr><td><code>mode</code></td><td>string</td><td><code>strict</code></td><td><code>strict</code> 严格（遮盖框外扩更多）或 <code>balanced</code> 平衡</td></tr>
+          <tr><td><code>label_text</code></td><td>string</td><td><code>type</code></td><td>浅色标签上写类型（<code>type</code>）或一致性代号（<code>alias</code>，如“姓名1”）</td></tr>
+          <tr><td><code>dpi</code></td><td>number</td><td><code>200</code></td><td>渲染分辨率：150、200 或 300</td></tr>
+          <tr><td><code>verify</code></td><td>boolean</td><td><code>false</code></td><td>出厂自检：打码后再识别一遍，补打遗漏</td></tr>
+        </tbody>
+      </table>
+      <pre class="code"><code>{"entities": ["PERSON", "STAFF", "ORG", "ID_CARD", "PHONE", "MEDICAL_ID", "SIGNATURE", "SEAL"],
+ "default_style": "label", "styles": {"SIGNATURE": "hatch"}, "mode": "strict", "dpi": 200}</code></pre>
+      <div id="catalog-tables"></div>
+    </section>
+
+    <div id="api-endpoints"></div>
+    <p class="api-foot">本页由 <a href="/openapi.json">/openapi.json</a> 生成，不加载任何外部资源。</p>
+  </main>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="/static/api.js"></script>
+</body>
+</html>

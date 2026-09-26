@@ -11,7 +11,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Path as PathParam, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -31,8 +31,15 @@ log = logging.getLogger("redactx.api")
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 EXT = {"pdf": "pdf", "jpeg": "jpg", "png": "png", "tiff": "tif", "bmp": "bmp", "webp": "webp", **{k: k for k in OFFICE_KINDS}}
 
-# 关闭 Swagger/ReDoc 页面：它们会从外部 CDN 加载脚本，违反本地运行、不联网的要求。接口描述见 /openapi.json
-app = FastAPI(title="锐消 RedactX", version=__version__, description="病案等文档的本地脱敏服务。全部在本机处理，不调用外部模型。", docs_url=None, redoc_url=None)
+TAGS = [
+    {"name": "系统", "description": "服务状态"},
+    {"name": "目录", "description": "可选的实体类型、打码样式与场景预设"},
+    {"name": "任务", "description": "异步脱敏：提交后轮询状态，完成后下载结果、报告与预览"},
+    {"name": "同步", "description": "小文件直接返回脱敏结果"},
+]
+# 不用 Swagger/ReDoc：它们会从外部 CDN 加载脚本，违反本地运行、不联网的要求。接口文档页见 /docs（web/api.html），机器可读描述见 /openapi.json
+app = FastAPI(title="锐消 RedactX", version=__version__, description="病案等文档的本地脱敏服务。全部在本机处理，不调用外部模型。",
+              openapi_tags=TAGS, docs_url=None, redoc_url=None)
 store = JobStore(settings.data_dir)
 
 
@@ -40,7 +47,7 @@ def error(status: int, code: str, message: str):
     raise HTTPException(status_code=status, detail={"code": code, "message": message})
 
 
-def auth(x_api_key: str | None = Header(default=None)):
+def auth(x_api_key: str | None = Header(default=None, description="服务端设置了 REDACTX_API_KEY 时必填")):
     if settings.api_key and x_api_key != settings.api_key:
         error(401, "BAD_API_KEY", "API Key 无效")
 
@@ -108,29 +115,35 @@ async def http_error(_, exc: HTTPException):
     return JSONResponse(status_code=exc.status_code, content={"error": detail})
 
 
-@app.get("/v1/health")
+@app.get("/v1/health", tags=["系统"], summary="服务状态", description="返回版本号、是否找到打码标签字体、默认渲染分辨率。不需要 API Key。")
 def health():
     return {"status": "ok", "version": __version__, "font": bool(settings.font_path), "dpi": settings.render_dpi}
 
 
-@app.get("/v1/catalog", dependencies=[Depends(auth)])
+@app.get("/v1/catalog", tags=["目录"], summary="完整目录", description="实体分组、实体类型、打码样式与场景预设。Web 页据此生成设置面板。", dependencies=[Depends(auth)])
 def catalog():
     return {"groups": ENTITY_GROUPS, "entities": ENTITIES, "styles": STYLES, "presets": PRESETS}
 
 
-@app.get("/v1/entities", dependencies=[Depends(auth)])
+@app.get("/v1/entities", tags=["目录"], summary="实体类型", description="可遮盖的实体类型：code 用于 options.entities，default 为病案审核场景的默认勾选。", dependencies=[Depends(auth)])
 def entities():
     return ENTITIES
 
 
-@app.get("/v1/styles", dependencies=[Depends(auth)])
+@app.get("/v1/styles", tags=["目录"], summary="打码样式", description="七种打码样式。所有样式都先擦除原像素再绘制外观。", dependencies=[Depends(auth)])
 def styles():
     return STYLES
 
 
-@app.post("/v1/jobs", status_code=202, dependencies=[Depends(auth)])
-async def create_job(file: UploadFile = File(...), options: str | None = Form(None), password: str | None = Form(None), retention_hours: float | None = Form(None)):
-    """提交异步脱敏任务。options 为 JSON 字符串，字段见 /docs。"""
+@app.post("/v1/jobs", status_code=202, tags=["任务"], summary="提交异步任务",
+          description="上传文件，立即返回 job_id，后台排队处理。用 GET /v1/jobs/{job_id} 轮询，status 为 succeeded 后下载结果。原件处理完立即删除。",
+          dependencies=[Depends(auth)])
+async def create_job(
+    file: UploadFile = File(..., description="PDF、图片或 Word/WPS/Excel/PPT/Markdown/TXT 等文档，按文件头识别真实类型"),
+    options: str | None = Form(None, description="脱敏选项，JSON 字符串；不传时用病案审核默认值。字段见接口文档页"),
+    password: str | None = Form(None, description="加密 PDF 的打开密码"),
+    retention_hours: float | None = Form(None, description="结果保留时长（小时），0.1–168，默认 24"),
+):
     opts = parse_options(options, password)
     tmp, ext = await save_upload(file)
     try:
@@ -143,21 +156,23 @@ async def create_job(file: UploadFile = File(...), options: str | None = Form(No
     return {"job_id": job_id, "pages": pages or None, "status": "queued"}
 
 
-@app.get("/v1/jobs", dependencies=[Depends(auth)])
-def list_jobs(limit: int = 30):
+@app.get("/v1/jobs", tags=["任务"], summary="最近任务", description="按提交时间倒序。不含原文件名。", dependencies=[Depends(auth)])
+def list_jobs(limit: int = Query(30, description="返回条数，1–100")):
     return store.list(min(max(limit, 1), 100))
 
 
-@app.get("/v1/jobs/{job_id}", dependencies=[Depends(auth)])
-def get_job(job_id: str):
+@app.get("/v1/jobs/{job_id}", tags=["任务"], summary="任务状态",
+         description="status 依次为 queued、running、succeeded 或 failed；progress 为 0–1；完成后 summary 含各类型遮盖数量。", dependencies=[Depends(auth)])
+def get_job(job_id: str = PathParam(..., description="提交任务时返回的 job_id")):
     job = store.get(job_id)
     if not job:
         error(404, "NOT_FOUND", "任务不存在或已过期删除")
     return job
 
 
-@app.get("/v1/jobs/{job_id}/result", dependencies=[Depends(auth)])
-def get_result(job_id: str):
+@app.get("/v1/jobs/{job_id}/result", tags=["任务"], summary="下载脱敏文件",
+         description="PDF 或多页输入输出栅格化重建的 PDF（已清除元数据）；单张图片输出同格式图片。任务未完成返回 409。", dependencies=[Depends(auth)])
+def get_result(job_id: str = PathParam(..., description="任务 ID")):
     job = store.get(job_id)
     if not job:
         error(404, "NOT_FOUND", "任务不存在或已过期删除")
@@ -168,16 +183,18 @@ def get_result(job_id: str):
     return FileResponse(out, filename=f"redacted-{job_id}{suffix}", headers={"Cache-Control": "no-store"})
 
 
-@app.get("/v1/jobs/{job_id}/report", dependencies=[Depends(auth)])
-def get_report(job_id: str):
+@app.get("/v1/jobs/{job_id}/report", tags=["任务"], summary="打码报告",
+         description="每处遮盖的页码、类型、来源、样式与归一化坐标 box=[x0,y0,x1,y1]（左上角为原点）。不含任何原文。", dependencies=[Depends(auth)])
+def get_report(job_id: str = PathParam(..., description="任务 ID")):
     p = store.dir(job_id) / "out" / "report.json"
     if not p.exists():
         error(404, "NOT_FOUND", "报告不存在")
     return JSONResponse(json.loads(p.read_text(encoding="utf-8")), headers={"Cache-Control": "no-store"})
 
 
-@app.get("/v1/jobs/{job_id}/preview/{page}", dependencies=[Depends(auth)])
-def get_preview(job_id: str, page: int, v: str = "after"):
+@app.get("/v1/jobs/{job_id}/preview/{page}", tags=["任务"], summary="页面预览图", description="JPEG，宽度不超过 1400 像素。", dependencies=[Depends(auth)])
+def get_preview(job_id: str = PathParam(..., description="任务 ID"), page: int = PathParam(..., description="页码，从 1 开始"),
+                v: str = Query("after", description="after 脱敏后，before 原件")):
     if v not in ("before", "after"):
         error(400, "INVALID", "v 只能是 before 或 after")
     p = store.dir(job_id) / "out" / "preview" / f"{v}-{page}.jpg"
@@ -186,8 +203,8 @@ def get_preview(job_id: str, page: int, v: str = "after"):
     return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
 
-@app.delete("/v1/jobs/{job_id}", dependencies=[Depends(auth)])
-def delete_job(job_id: str):
+@app.delete("/v1/jobs/{job_id}", tags=["任务"], summary="删除结果", description="立即删除脱敏文件、报告与预览，不等保留时长到期。处理中的任务返回 409。", dependencies=[Depends(auth)])
+def delete_job(job_id: str = PathParam(..., description="任务 ID")):
     job = store.get(job_id)
     if job and job["status"] in ("queued", "running"):
         error(409, "BUSY", "任务正在处理，完成后再删除")
@@ -196,9 +213,14 @@ def delete_job(job_id: str):
     return {"deleted": True}
 
 
-@app.post("/v1/redact", dependencies=[Depends(auth)])
-async def redact_sync(file: UploadFile = File(...), options: str | None = Form(None), password: str | None = Form(None)):
-    """同步脱敏：限 10 页、20 MB 以内，直接返回脱敏后的文件。病案文件请用 /v1/jobs。"""
+@app.post("/v1/redact", tags=["同步"], summary="同步脱敏",
+          description="限 10 页、20 MB 以内，直接返回脱敏后的文件；响应头 X-Redact-Counts 为各类型遮盖数量（JSON）。病案等大文件请用 /v1/jobs。",
+          dependencies=[Depends(auth)])
+async def redact_sync(
+    file: UploadFile = File(..., description="待脱敏文件"),
+    options: str | None = Form(None, description="脱敏选项，JSON 字符串，同 /v1/jobs"),
+    password: str | None = Form(None, description="加密 PDF 的打开密码"),
+):
     opts = parse_options(options, password)
     tmp, ext = await save_upload(file)
     work = Path(tempfile.mkdtemp(dir=settings.data_dir, prefix="sync-"))
@@ -224,6 +246,11 @@ async def redact_sync(file: UploadFile = File(...), options: str | None = Form(N
 
 
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
+
+
+@app.get("/docs", include_in_schema=False)
+def api_docs():
+    return FileResponse(WEB_DIR / "api.html", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/", include_in_schema=False)
