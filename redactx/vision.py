@@ -115,7 +115,9 @@ def _ink_mask(img: np.ndarray, rect: Rect, exclude: list[Rect] | None = None):
     if x1 - x0 < 6 or y1 - y0 < 6:
         return None, (x0, y0)
     crop = cv2.cvtColor(img[y0:y1, x0:x1], cv2.COLOR_RGB2GRAY)
-    thr = min(150, int(np.percentile(crop, 60)) - 50)
+    # 相对纸色取阈值：白纸上模糊、压缩后的浅色手写（灰度 150–190）也算墨迹；牛皮纸等深色纸不变
+    paper = float(np.percentile(crop, 60))
+    thr = min(paper - 50, 0.8 * paper)
     ink = (crop < thr).astype(np.uint8)
     rh = y1 - y0
     lines = _rule_lines(ink, max(12, int(rh * 0.9)), max(12, int(rh * 0.7)))

@@ -230,3 +230,12 @@ def test_weak_sources_seed_only_with_surname():
     # 以病历用语开头的一律不作种子
     from redactx.schemas import Hit
     assert collect_seeds([Hit("STAFF", "anchor", 0, 0, 0, 4, "康复治疗")], []) == {}
+
+
+def test_landline_with_ocr_dot_needs_phone_cue():
+    from redactx.detect import rules
+
+    phones = lambda t: [t[a:b] for ty, a, b in rules.find(t) if ty == "PHONE"]  # noqa: E731
+    assert phones("地址：某路30号电话：0522.3964869") == ["0522.3964869"]
+    assert phones("金额 010.12345678元") == []
+    assert phones("编码0571 88886666") == []
