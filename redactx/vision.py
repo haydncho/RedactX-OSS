@@ -14,7 +14,12 @@ def red_seals(img: np.ndarray, dpi: int) -> list[Rect]:
     """红章：HSV 颜色分割。排除内镜、病理等本身偏红的照片。"""
     hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
     h, s, v = cv2.split(hsv)
-    red = (((h <= 10) | (h >= 155)) & (s >= 25) & (v >= 90)).astype(np.uint8) * 255
+    # 红色优势：R 明显高于 G、B。牛皮纸上的蓝黑手写墨迹边缘呈暗红褐色（R 只高 10–20，且 G > B），不能算作印章；
+    # 淡粉色印章的红色优势也不大（约 30），但偏品红（B ≥ G），据此区分
+    rgb = img.astype(np.int16)
+    dominance = rgb[..., 0] - np.maximum(rgb[..., 1], rgb[..., 2])
+    reddish = (dominance >= 35) | ((dominance >= 22) & (rgb[..., 2] >= rgb[..., 1]))
+    red = (((h <= 10) | (h >= 155)) & (s >= 25) & (v >= 90) & reddish).astype(np.uint8) * 255
     k = max(3, int(dpi / 40))
     closed = cv2.morphologyEx(red, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k * 3, k * 3)))
     n, _, stats, _ = cv2.connectedComponentsWithStats(closed)
@@ -201,3 +206,157 @@ def repeated_graphics(cands: list[Graphic], min_corr: float = 0.6, max_shift: fl
             if float((cands[a].thumb * cands[b].thumb).mean()) >= min_corr:
                 hits.update((a, b))
     return [cands[i] for i in sorted(hits)]
+
+
+# ---------- 水印：浅色层单独识别，只擦水印颜色的像素，不遮下面的正文 ----------
+
+SLANT_MIN = 15  # 倾斜超过这个角度（度）的浅色文字行视为水印
+
+
+@dataclass
+class Watermark:
+    quad: np.ndarray  # 4×2，文字行四边形（页面像素坐标）
+    rect: Rect
+    text: str  # 只在任务内存中使用，不写入报告与日志
+
+
+def _paper(gray: np.ndarray) -> float:
+    return float(np.percentile(gray, 90))
+
+
+def light_layer(img: np.ndarray) -> np.ndarray:
+    """比纸色深、比正文浅，且不紧挨深色笔画的像素：水印、淡色印章多在这一层。"""
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    paper = _paper(gray)
+    dark = cv2.dilate((gray < paper - 110).astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
+    light = ((gray < paper - 22) & ~dark).astype(np.uint8)
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(light, connectivity=8)
+    keep = np.zeros(n, bool)
+    keep[1:] = stats[1:, cv2.CC_STAT_AREA] >= 12  # 去掉零散噪点
+    return keep[lab]
+
+
+def watermarks(img: np.ndarray, names: list[str], is_org) -> list[Watermark]:
+    """在浅色层上单独做 OCR，找出院名水印。is_org(text) 判断文字是否含机构名称；names 为文档里已识别的机构名。"""
+    from rapidfuzz import fuzz
+
+    from . import ocr
+
+    light = light_layer(img)
+    if light.mean() < 0.001:
+        return []
+    layer = np.where(light, 70, 255).astype(np.uint8)
+    res = ocr.engine()(cv2.cvtColor(layer, cv2.COLOR_GRAY2RGB), use_det=True, use_cls=True, use_rec=True)
+    txts = getattr(res, "txts", None) or ()
+    boxes = getattr(res, "boxes", None)
+    scores = getattr(res, "scores", None) or ()
+    out: list[Watermark] = []
+    for i, t in enumerate(txts):
+        t = (t or "").replace(" ", "")
+        if len(t) < 4 or (scores and scores[i] < 0.5) or boxes is None:
+            continue
+        if not (is_org(t) or any(len(n) >= 4 and fuzz.partial_ratio(n, t) >= 80 for n in names)):
+            continue
+        q = np.asarray(boxes[i], dtype=np.float32)
+        out.append(Watermark(q, (float(q[:, 0].min()), float(q[:, 1].min()), float(q[:, 0].max()), float(q[:, 1].max())), t))
+    return out
+
+
+def erase_watermark(img: np.ndarray, quad: np.ndarray) -> None:
+    """在水印四边形内，只把颜色落在“纸色—水印色”连线附近的像素抹成背景；深色正文、照片、印章不动。"""
+    h = float(np.linalg.norm(quad[3] - quad[0]))
+    pad = max(3, int(0.25 * h))
+    x0, y0 = (int(max(v - pad, 0)) for v in quad.min(axis=0))
+    x1, y1 = int(min(quad[:, 0].max() + pad, img.shape[1])), int(min(quad[:, 1].max() + pad, img.shape[0]))
+    if x1 - x0 < 4 or y1 - y0 < 4:
+        return
+    crop = img[y0:y1, x0:x1]
+    poly = np.zeros(crop.shape[:2], np.uint8)
+    cv2.fillPoly(poly, [np.round(quad - [x0, y0]).astype(np.int32)], 1)
+    poly = cv2.dilate(poly, np.ones((2 * pad + 1, 2 * pad + 1), np.uint8)) > 0
+    px = crop.astype(np.float32)
+    gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY).astype(np.float32)
+    paper_g = _paper(gray[poly]) if poly.any() else 255.0
+    paper = np.median(px[poly & (gray >= paper_g - 6)], axis=0) if (poly & (gray >= paper_g - 6)).any() else np.array([255, 255, 255], np.float32)
+    wm_px = poly & (gray < paper_g - 22) & (gray > paper_g - 110)
+    if wm_px.sum() < 20:
+        return
+    wm = np.median(px[wm_px], axis=0)
+    d = paper - wm
+    dd = float(d @ d)
+    if dd < 100:
+        return
+    diff = paper - px  # 每个像素相对纸色的偏移
+    t = (diff @ d) / dd  # 在“纸色 → 水印色”方向上的位置
+    resid = np.linalg.norm(diff - t[..., None] * d, axis=-1)
+    # 灰色水印与黑字边缘的抗锯齿像素颜色相同，靠颜色分不开：深色笔画及其周边 2 像素一律不动
+    near_dark = cv2.dilate((gray < paper_g - 110).astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
+    sel = poly & (t > 0.12) & (t < 1.6) & (resid < 24) & ~near_dark
+    if sel.any():
+        # 直接填纸色；图像修复会把旁边的黑字“涂”进来，反而把正文抹糊
+        crop[sel] = np.clip(paper, 0, 255).astype(np.uint8)
+
+
+def grow_strokes(img: np.ndarray, rect: Rect, avoid: list[Rect]) -> Rect:
+    """大号手写签名常超出推算的区域：把与区域相连的笔画整体纳入。
+    表格线先去掉；与已识别文字（avoid，如旁边的日期、标签）重叠的笔画不纳入。"""
+    x0, y0, x1, y1 = rect
+    h = max(y1 - y0, 8.0)
+    H, W = img.shape[:2]
+    wx0, wy0 = int(max(x0 - 2 * h, 0)), int(max(y0 - h, 0))
+    wx1, wy1 = int(min(x1 + 3.5 * h, W)), int(min(y1 + h, H))
+    if wx1 - wx0 < 8 or wy1 - wy0 < 8:
+        return rect
+    crop = img[wy0:wy1, wx0:wx1]
+    gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
+    rgb = crop.astype(np.int16)
+    not_red = (rgb[..., 0] - np.maximum(rgb[..., 1], rgb[..., 2])) < 35  # 印章的红色笔画不算签名
+    ink = ((gray < _paper(gray) - 90) & not_red).astype(np.uint8)
+    k = max(15, int(1.5 * h))
+    lines = cv2.morphologyEx(ink, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (k, 1)))
+    lines |= cv2.morphologyEx(ink, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (1, k)))
+    ink &= 1 - cv2.dilate(lines, np.ones((3, 3), np.uint8))
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(ink, connectivity=8)
+    rx0, ry0, rx1, ry1 = int(x0) - wx0, int(y0) - wy0, int(x1) - wx0, int(y1) - wy0
+    inside = set(np.unique(lab[max(ry0, 0) : max(ry1, 0), max(rx0, 0) : max(rx1, 0)]).tolist()) - {0}
+    out = [x0, y0, x1, y1]
+    for i in inside:
+        cx, cy, cw, chh, area = stats[i]
+        if area < 12:
+            continue
+        b = (cx + wx0, cy + wy0, cx + cw + wx0, cy + chh + wy0)
+        if (b[0] >= x0 and b[1] >= y0 and b[2] <= x1 and b[3] <= y1):
+            continue
+        # 伸出区域的这一笔如果有一半以上落在别的已识别文字的字框里（日期、标签），不纳入
+        if any(_inter(b, a) > 0.5 * max((b[2] - b[0]) * (b[3] - b[1]), 1) for a in avoid):
+            continue
+        out = [min(out[0], b[0] - 2), min(out[1], b[1] - 2), max(out[2], b[2] + 2), max(out[3], b[3] + 2)]
+    return tuple(float(v) for v in out)
+
+
+def _inter(a: Rect, b: Rect) -> float:
+    w = min(a[2], b[2]) - max(a[0], b[0])
+    h = min(a[3], b[3]) - max(a[1], b[1])
+    return w * h if w > 0 and h > 0 else 0.0
+
+
+def skip_leading_cluster(img: np.ndarray, rect: Rect, h: float) -> Rect:
+    """区域最左边的一簇笔画（被 OCR 并进签名的日期数字）之后若有明显空白，把左边界移到空白之后。"""
+    x0, y0, x1, y1 = (int(round(v)) for v in rect)
+    x0, y0 = max(x0, 0), max(y0, 0)
+    crop = img[y0:y1, x0:x1]
+    if crop.size == 0:
+        return rect
+    gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
+    cols = (gray < _paper(gray) - 90).any(axis=0)
+    ink = np.flatnonzero(cols)
+    if len(ink) == 0:
+        return rect
+    need = max(3, int(0.25 * h))
+    run = 0
+    for x in range(ink[0], min(len(cols), ink[0] + int(2.0 * h))):
+        run = run + 1 if not cols[x] else 0
+        if run >= need:
+            nx = x0 + x - 1
+            return (float(nx), rect[1], rect[2], rect[3]) if nx < x1 - h else rect
+    return rect

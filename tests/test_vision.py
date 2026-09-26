@@ -63,3 +63,39 @@ def test_qr_plausibility():
     assert vision._plausible_qr(square, DPI)
     assert not vision._plausible_qr(square * 6, DPI)  # 大半页的“二维码”多是表格线
     assert not vision._plausible_qr(np.array([[0, 0], [300, 0], [300, 90], [0, 90]], np.float32), DPI)
+
+
+def _seal(img, cx, cy, color):
+    cv2.circle(img, (cx, cy), 120, color, 10)
+    cv2.circle(img, (cx, cy), 30, color, -1)
+
+
+def test_red_seal_detected_on_kraft_but_not_dark_handwriting():
+    kraft = np.full((1200, 1000, 3), (224, 202, 166), np.uint8)
+    _seal(kraft, 300, 300, (186, 25, 29))  # 红章压在牛皮纸上
+    # 蓝黑手写墨迹与牛皮纸混合后的暗红褐色笔画
+    for k in range(6):
+        cv2.putText(kraft, "ABCD", (120, 700 + k * 60), cv2.FONT_HERSHEY_SIMPLEX, 2, (91, 76, 69), 5)
+    found = vision.red_seals(kraft, DPI)
+    assert len(found) == 1
+    x0, y0, x1, y1 = found[0]
+    assert x0 < 300 < x1 and y0 < 300 < y1
+
+
+def test_faint_pink_seal_detected():
+    img = np.full((800, 800, 3), 245, np.uint8)
+    _seal(img, 400, 400, (236, 168, 184))
+    assert len(vision.red_seals(img, DPI)) == 1
+
+
+def test_grow_strokes_takes_signature_tail_but_not_neighbours():
+    img = np.full((600, 900, 3), 245, np.uint8)
+    cv2.putText(img, "2025", (100, 150), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (20, 20, 20), 3)  # 上一行的日期
+    cv2.line(img, (200, 260), (560, 200), (30, 30, 90), 4)  # 签名的长拖尾，伸出区域
+    cv2.circle(img, (620, 240), 60, (212, 32, 44), 6)  # 旁边的红章
+    rect = (200.0, 200.0, 320.0, 280.0)
+    date_box = (95.0, 115.0, 220.0, 160.0)
+    x0, y0, x1, y1 = vision.grow_strokes(img, rect, [date_box])
+    assert x1 >= 555  # 拖尾整体纳入
+    assert x1 < 600  # 不吞红章
+    assert y0 > 160  # 不吞上一行日期

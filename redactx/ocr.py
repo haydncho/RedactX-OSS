@@ -147,7 +147,11 @@ def ocr_page(img: np.ndarray, rotation: int = 0, min_score: float = 0.3) -> list
                     continue
                 chars.append(Char(ch=ch, box=(x0 + (x1 - x0) * j / n, y0, x0 + (x1 - x0) * (j + 1) / n, y1), score=float(scores[idx]) if scores else 1.0))
         if chars:
-            lines.append(Line(chars=chars, source="ocr"))
+            angle = 0.0
+            if boxes is not None and idx < len(boxes):
+                q = np.asarray(boxes[idx], dtype=float)
+                angle = float(np.degrees(np.arctan2(q[1][1] - q[0][1], q[1][0] - q[0][0])))
+            lines.append(Line(chars=chars, source="ocr", angle=angle))
     return lines
 
 

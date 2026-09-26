@@ -23,7 +23,8 @@ from PIL import Image
 
 from . import ocr, redact, vision
 from .catalog import ENTITY_BY_CODE, STYLE_CODES
-from .detect import engine
+from .detect import engine, rules
+from .detect.anchors import DATE_SIGN_CUT
 from .ingest import iter_pages, open_doc
 from .schemas import Hit, PageData, Region
 
@@ -72,7 +73,22 @@ def _hits_to_rect(page: PageData, h: Hit, strict: bool):
         left = max(left, line.chars[h.start - 1].box[2] + 1)
     if h.end < len(line.chars):
         right = min(right, line.chars[h.end].box[0] - 1)
-    return (min(left, x0), y0 - py, max(right, x1), y1 + py)
+    top, bottom = y0 - py, y1 + py
+    # 上下外扩也不压到上下相邻行的字：大号手写签名的 OCR 字框常比笔画高，会压进上一行的日期。
+    # 相邻行的字只要在本行中线以上（以下），就把边界收到它的下沿（上沿），最多收到本行中线
+    mid = (y0 + y1) / 2
+    for li, other in enumerate(page.lines):
+        if li == h.line:
+            continue
+        for c in other.chars:
+            if c.box[2] <= left or c.box[0] >= right:
+                continue
+            ccy = (c.box[1] + c.box[3]) / 2
+            if ccy < y0 + 0.3 * ch and c.box[3] > top:
+                top = min(c.box[3] + 1, mid)
+            elif ccy > y1 - 0.3 * ch and c.box[1] < bottom:
+                bottom = max(c.box[1] - 1, mid)
+    return (min(left, x0), top, max(right, x1), bottom)
 
 
 def _merge(regions: list[Region]) -> list[Region]:
@@ -129,8 +145,14 @@ def _page_text(img: np.ndarray, pd: PageData, repeated: set[str]) -> None:
     pd.rotation = ocr.detect_orientation(img)
     work = ocr._rotate(img, pd.rotation)
     pd.width, pd.height = work.shape[1], work.shape[0]
-    pd.lines = ocr.ocr_page(work, 0)
+    # 斜向文字行多为院名水印，不参与正文识别（否则按外接矩形打码会盖住下面的正文），另由水印识别处理
+    pd.lines = [ln for ln in ocr.ocr_page(work, 0) if not _slanted(ln)]
     pd.text_source = "ocr"
+
+
+def _slanted(ln) -> bool:
+    a = abs(ln.angle) % 180
+    return vision.SLANT_MIN <= a <= 90 - vision.SLANT_MIN or 90 + vision.SLANT_MIN <= a <= 180 - vision.SLANT_MIN
 
 
 def _has_printed_labels(pd: PageData, rect) -> bool:
@@ -148,6 +170,37 @@ def _has_printed_labels(pd: PageData, rect) -> bool:
 
 def _field_ok(work: np.ndarray, pd: PageData, rect) -> bool:
     return vision.has_ink(work, rect) and not _has_printed_digits(pd, rect) and not _has_printed_labels(pd, rect)
+
+
+def _char_boxes_outside(pd: PageData, rect, skip_line: int | None = None) -> list:
+    """区域外已识别文字的字框：扩展签名区域时不得吞进它们。"""
+    x0, y0, x1, y1 = rect
+    out = []
+    for li, ln in enumerate(pd.lines):
+        if li == skip_line:
+            continue
+        for c in ln.chars:
+            cx, cy = (c.box[0] + c.box[2]) / 2, (c.box[1] + c.box[3]) / 2
+            if not (x0 <= cx <= x1 and y0 <= cy <= y1):
+                out.append(c.box)
+    return out
+
+
+def _after_printed_date(pd: PageData, rect):
+    """“医师签名：2025年10月03日 （签名）”：填写区开头是打印的日期时，把区域左边界移到日期之后。日期一律不遮。"""
+    x0, y0, x1, y1 = rect
+    for ln in pd.lines:
+        for m in rules.RE_DATE.finditer(ln.text):
+            cs = ln.chars[m.start() : m.end()]
+            if not cs:
+                continue
+            dx0, dx1 = cs[0].box[0], cs[-1].box[2]
+            dcy = (cs[0].box[1] + cs[0].box[3]) / 2
+            if y0 <= dcy <= y1 and x0 - 2 <= dx0 < x0 + 0.5 * (x1 - x0) and dx1 > x0:
+                h = max(cs[0].box[3] - cs[0].box[1], 1)
+                nx0 = dx1 + 0.3 * h
+                return (nx0, y0, max(x1, nx0 + 6 * h), y1) if nx0 < x1 + 6 * h else None
+    return rect
 
 
 def _has_printed_digits(pd: PageData, rect) -> bool:
@@ -199,6 +252,8 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
     page_regions: list[list[Region]] = []
     digest_pages: dict[str, set[int]] = {}
     graphics: list[vision.Graphic] = []
+    page_wm: list[list[vision.Watermark]] = []
+    org_names: set[str] = set()
 
     progress(0.01, "解析文件")
     for img, pd in iter_pages(src, doc.kind, opts.dpi, opts.password):
@@ -209,23 +264,36 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
         work = ocr._rotate(img, pd.rotation)
         hits, fields = engine.page_hits(pd, enabled, opts.custom_words)
         regions: list[Region] = []
-        for ftype, _label, right_rect, below_rect in fields:
+        for ftype, label, right_rect, below_rect in fields:
             if ftype not in enabled:
                 continue
             rect = None
+            if right_rect and label == DATE_SIGN_CUT:
+                # 日期的“日”被 OCR 并进了签名：填写区从这两位数字之后开始，日期一律不遮
+                right_rect = vision.skip_leading_cluster(work, right_rect, (right_rect[3] - right_rect[1]) / 2.2)
+            if right_rect:
+                right_rect = _after_printed_date(pd, right_rect)
             if right_rect and _field_ok(work, pd, right_rect):
                 rect = right_rect
             elif below_rect and _field_ok(work, pd, below_rect):
                 rect = below_rect
             if rect:
                 h = max(rect[3] - rect[1], 1)
-                regions.append(Region(ftype, "anchor-field", pd.index, vision.ink_bounds(work, rect, pad=0.12 * h)))
+                r = vision.ink_bounds(work, rect, pad=0.12 * h)
+                if ftype == "SIGNATURE":
+                    r = vision.grow_strokes(work, r, _char_boxes_outside(pd, r))
+                regions.append(Region(ftype, "anchor-field", pd.index, r))
         if "SEAL" in enabled:
             regions += [Region("SEAL", "color", pd.index, r) for r in vision.red_seals(work, opts.dpi)]
         if "QRCODE" in enabled:
             regions += [Region("QRCODE", "detector", pd.index, r) for r in vision.codes(work, opts.dpi)]
         if "LOGO" in enabled:
             graphics += vision.graphic_candidates(work, pd.lines, pd.index, opts.dpi)
+        wms: list[vision.Watermark] = []
+        if "ORG" in enabled:
+            org_names.update(h.value for h in hits if h.type == "ORG" and h.value)
+            wms = vision.watermarks(work, sorted(org_names), lambda t: any(k == "ORG" for k, _, _ in rules.find(t)))
+        page_wm.append(wms)
         _preview(img, prev_dir / f"before-{pd.index + 1}.jpg")
         pages.append(pd)
         page_hits.append(hits)
@@ -255,6 +323,9 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
         regions = list(page_regions[i])
         for h in hits:
             rect = _hits_to_rect(pd, h, strict)
+            if rect and h.type in ("PERSON", "STAFF", "SIGNATURE") and pd.lines[h.line].source == "ocr":
+                # 手写姓名、签名：把超出字框的相连笔画一并遮住
+                rect = vision.grow_strokes(img, rect, _char_boxes_outside(pd, rect, skip_line=h.line))
             if rect:
                 regions.append(Region(h.type, h.source, i, rect, aliases.get(h.type, h.value)))
         scanned = any((o.rect[2] - o.rect[0]) * (o.rect[3] - o.rect[1]) >= 0.8 * pd.width * pd.height for o in pd.images)
@@ -262,6 +333,9 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
             kind = vision.classify_image(obj, pd.width, pd.height, obj.digest in repeated, opts.dpi)
             if kind and kind in enabled:
                 regions.append(Region(kind, "image-object", i, obj.rect))
+        # 先消除水印（只擦水印像素），再按样式打码
+        for wm in page_wm[i]:
+            vision.erase_watermark(img, wm.quad)
         regions = _merge(regions)
         for r in regions:
             r.style = opts.style_for(r.type)
@@ -270,6 +344,7 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
                 text = r.alias or ENTITY_BY_CODE[r.type]["label"]
             redact.apply(img, r.rect, r.style, text, rng, max_font)
 
+        regions += [Region("ORG", "watermark", i, wm.rect, style="watermark") for wm in page_wm[i]]
         residual = 0
         if opts.verify:
             progress(0.62 + 0.36 * (i + 0.5) / n, f"自检第 {i + 1}/{n} 页")

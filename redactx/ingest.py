@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import math
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -178,6 +179,10 @@ def _text_layer(page: pdfium.PdfPage, scale: float, height_pt: float) -> list[Ch
             continue
         left, bottom, right, top = tp.get_charbox(i, loose=False)
         if right - left <= 0 or top - bottom <= 0:
+            continue
+        # 斜向文字（多为院名水印）不并入正文行：按基线分行会把它们拆散、混进正文。水印另由图像识别消除
+        deg = math.degrees(pdfium_c.FPDFText_GetCharAngle(tp.raw, i)) % 90
+        if 8 < deg < 82:
             continue
         chars.append(Char(ch=ch, box=(left * scale, (height_pt - top) * scale, right * scale, (height_pt - bottom) * scale)))
     tp.close()

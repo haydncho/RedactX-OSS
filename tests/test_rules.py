@@ -87,3 +87,44 @@ def test_anchor_label_alone_on_line():
     page = PageData(0, 1000, 1000, lines=[_line("签名")])
     _, fields = anchor(page, {"STAFF", "SIGNATURE"})
     assert [f[0] for f in fields] == ["SIGNATURE"]
+
+
+def _ocr_line(text: str) -> Line:
+    ln = _line(text)
+    ln.source = "ocr"
+    return ln
+
+
+def test_date_then_signature():
+    from redactx.detect.anchors import DATE_SIGN, DATE_SIGN_CUT, date_signatures
+
+    # OCR 把手写日期和签名识别成一行：连笔签名常只认出一两个字，日的数字还可能被签名吞掉
+    for text, label in [("2025.10双宇娜", DATE_SIGN_CUT), ("2025.07.清网", DATE_SIGN_CUT), ("2025.10.04娜", DATE_SIGN),
+                        ("2025年10月03日王一", DATE_SIGN), ("2025.10.04", DATE_SIGN)]:
+        fields = date_signatures(PageData(0, 1000, 1000, lines=[_ocr_line(text)]))
+        assert [(f[0], f[1]) for f in fields] == [("SIGNATURE", label)], text
+        date_end = _ocr_line(text).chars[len(text.rstrip("双宇娜清网王一娜")) - 1].box[2]
+        assert fields[0][2][0] > date_end - 1  # 填写区从日期之后开始
+    # 日期后面是正文，不是签名
+    for text in ["2025.10.04上级医师查房，同意目前诊疗方案。", "2025年10月01日入院", "2025.10.03主治医师查房记录"]:
+        assert date_signatures(PageData(0, 1000, 1000, lines=[_ocr_line(text)])) == [], text
+
+
+def test_handwritten_name_after_generic_label():
+    # “患者”后面紧跟的姓名字更大（手写）：算标签；正文里同样大小的“患者病情平稳”不算
+    ln = _ocr_line("患者高强兰")
+    for c in ln.chars[2:]:
+        c.box = (c.box[0], -3, c.box[2], 13)
+    hits, _ = anchor(PageData(0, 1000, 1000, lines=[ln]), {"PERSON"})
+    assert [ln.text[h.start:h.end] for h in hits] == ["高强兰"]
+    hits, _ = anchor(PageData(0, 1000, 1000, lines=[_ocr_line("患者病情平稳，医生建议明日出院。")]), {"PERSON", "STAFF"})
+    assert hits == []
+
+
+def test_label_then_name_at_line_end():
+    # OCR 常给整行统一字高：“医生郑杰雪”整行就是标签加姓名，算字段
+    hits, _ = anchor(PageData(0, 1000, 1000, lines=[_ocr_line("医生郑杰雪")]), {"STAFF"})
+    assert [(h.type, "医生郑杰雪"[h.start:h.end]) for h in hits] == [("STAFF", "郑杰雪")]
+    # 以姓氏字开头的病历常用词不算
+    for text in ["患者高热", "患者平稳", "医生查体"]:
+        assert anchor(PageData(0, 1000, 1000, lines=[_ocr_line(text)]), {"PERSON", "STAFF"})[0] == [], text

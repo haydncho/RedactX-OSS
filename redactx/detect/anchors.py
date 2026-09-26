@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass
 
 from ..schemas import Hit, Line, PageData, Rect
-from .lexicon import BELOW_TYPES, GENERIC, LABELS, MAX_LEN, SIGNATURE_LABELS, STOP_WORDS, TEMPLATE_CHARS
+from .lexicon import BELOW_TYPES, COMPOUND_SURNAMES, GENERIC, LABELS, MAX_LEN, SIGNATURE_LABELS, STOP_WORDS, SURNAMES, TEMPLATE_CHARS
 
 _LABEL_MAX = max(len(k) for k in LABELS)
 _STOP_MAX = max(len(k) for k in STOP_WORDS)
@@ -19,7 +19,8 @@ SOFT_SEPS = set("：:()（）[]【】 _＿-—")
 PUNCT_PRE = set("：:，,；;。.、()（）[]【】 |｜/")
 NOT_NAME = set(
     """本人 无 不详 同上 拒绝 签名 签字 家属 患者 病人 医师 医生 护士 已签 未签 见上 空 未知 自己 其他 其它 同意 不同意 确认 日期 时间
-    科室 主任 主治 住院 年龄 性别 男 女 岁 电话 地址 手机""".split()
+    科室 主任 主治 住院 年龄 性别 男 女 岁 电话 地址 手机 查房 记录 病程 首次 日常 会诊 抢救 讨论 小结 交班 接班 复查 建议 病情
+    高热 高烧 高血 黄疸 白细 查体 常规 严重 全身 平稳 安静 明显 康复 于今 于入 包块 方案 时间 目前""".split()
 )
 RE_CJK_NAME = re.compile(r"[一-龥·•]{2,5}")
 RE_ALNUM = re.compile(r"[0-9A-Za-z\-]+")
@@ -68,6 +69,9 @@ def find_labels(page: PageData) -> list[LabelHit]:
             # 表单标签位于行首时，手写内容常紧贴标签，被 OCR 识别到同一行
             if not post_ok and i == 0 and lab not in GENERIC and line.source == "ocr":
                 post_ok = True
+            # “患者”“医生”等通用词后面紧跟手写姓名、没有冒号时也算标签
+            if not post_ok and pre_ok and LABELS[lab] in ("PERSON", "STAFF") and _handwritten_name_after(line, i, j):
+                post_ok = True
             if pre_ok and post_ok:
                 out.append(LabelHit(li, i, j, lab, LABELS[lab]))
                 i = j
@@ -76,11 +80,88 @@ def find_labels(page: PageData) -> list[LabelHit]:
     return out
 
 
+def _name_run(text: str, j: int) -> int:
+    """从 j 开始的连续汉字，遇到标点、非敏感字段名或行尾为止，返回结束位置。"""
+    k = j
+    while k < len(text) and "一" <= text[k] <= "龥" and k - j < 5:
+        if k > j and _match_at(text, k, STOP_WORDS, _STOP_MAX):
+            break
+        k += 1
+    return k
+
+
+def _handwritten_name_after(line: Line, i: int, j: int) -> bool:
+    """通用词后面紧跟的 2–4 个汉字像手写姓名：首字是常见姓氏，并且满足其一——
+    姓名正好在行尾（整行就是“医生 + 姓名”）；字比标签高出 15% 以上或识别置信度偏低（手写特征）。
+    正文里“患者病情好转，……”之类不会触发。"""
+    if line.source != "ocr":
+        return False
+    text = line.text
+    k = _name_run(text, j)
+    name = text[j:k]
+    if not 2 <= len(name) <= 4 or name in NOT_NAME or name in STOP_WORDS:
+        return False
+    if name[0] not in SURNAMES and name[:2] not in COMPOUND_SURNAMES:
+        return False
+    if k < len(text) and text[k] not in PUNCT_PRE and not _match_at(text, k, STOP_WORDS, _STOP_MAX) and _gap(line, k - 1, k) <= 0.4:
+        return False
+    if k == len(text):
+        return True
+    lab_h = sorted(c.box[3] - c.box[1] for c in line.chars[i:j])[(j - i) // 2]
+    name_chars = line.chars[j:k]
+    name_h = sorted(c.box[3] - c.box[1] for c in name_chars)[len(name_chars) // 2]
+    mean_score = sum(c.score for c in name_chars) / len(name_chars)
+    return name_h >= 1.15 * lab_h or mean_score < 0.85
+
+
+# 手写日期与紧挨着的签名常被 OCR 识别成一行，“日”的数字还会被签名吞掉（如“2025.10双宇娜”），所以日可缺省
+RE_DATE_LOOSE = re.compile(r"(?:19|20)\d{2}\s*[.\-/年]\s*\d{1,2}(?:\s*[.\-/月]\s*(?:\d{1,2}日?)?)?(?:\s*\d{1,2}[:：]\d{2})?")
+# 日期后面常见的非姓名词：不当作签名
+_AFTER_DATE_WORDS = set("入院 出院 手术 查房 记录 复查 复诊 首次 日常 抢救 会诊 转科 交班 接班 死亡 讨论 小结 病程 术后 术前 上午 下午 晚上 夜间 凌晨".split())
+
+
+DATE_SIGN = "日期"  # date_signatures 产生的填写区标签
+DATE_SIGN_CUT = "日期缺日"  # 日的数字被 OCR 并进了签名：打码前先跳过这两位数字
+
+
+def date_signatures(page: PageData) -> list[tuple[str, str, Rect, Rect | None]]:
+    """病程记录常见“日期 + 医师签名”而签名前没有标签。日期后面只跟着 1–4 个像姓名的汉字（OCR 对连笔签名往往只认出一两个字）
+    或日期就在行尾时，把日期右侧推算为签名填写区，交给墨迹检查。右侧有成句的正文则不算。"""
+    fields: list[tuple[str, str, Rect, Rect | None]] = []
+    for li, line in enumerate(page.lines):
+        if line.source != "ocr":
+            continue
+        text = line.text
+        for m in RE_DATE_LOOSE.finditer(text):
+            j = m.end()
+            k = _name_run(text, j)
+            tail = text[j:k]
+            if k != len(text) or len(tail) > 4 or any(tail.startswith(w) for w in _AFTER_DATE_WORDS) \
+                    or any(tail.startswith(w) for w in NOT_NAME if len(w) >= 2) or tail in STOP_WORDS:
+                continue
+            d = line.chars[m.start():j]
+            h = max(sorted(c.box[3] - c.box[1] for c in d)[len(d) // 2], 1)
+            x1 = d[-1].box[2]
+            cy = (min(c.box[1] for c in d) + max(c.box[3] for c in d)) / 2
+            rect = (x1 + 0.2 * h, cy - 1.1 * h, max(x1 + 8 * h, line.box[2] + 0.5 * h), cy + 1.1 * h)
+            if any(o is not line and _overlaps(o.box, rect) and len(o.text) >= 5 for o in page.lines):
+                continue
+            # 年、月、日三段齐全才算完整日期；只到月（“2025.10”“2025.07.”）说明日的数字被签名吞掉了
+            cut = not re.search(r"\d{4}\s*[.\-/年]\s*\d{1,2}\s*[.\-/月]\s*\d{1,2}日?$", text[m.start():j])
+            fields.append(("SIGNATURE", DATE_SIGN_CUT if cut else DATE_SIGN, rect, None))
+    return fields
+
+
+def _overlaps(a: Rect, b: Rect) -> bool:
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
 def _valid(kind: str, value: str) -> bool:
     if not value:
         return False
     if kind in ("PERSON", "STAFF"):
-        return bool(RE_CJK_NAME.fullmatch(value)) and value not in NOT_NAME and value not in STOP_WORDS
+        # “主治医师查房记录”里的“查房记录”不是姓名：以病历常用词开头的取值一律不算
+        return bool(RE_CJK_NAME.fullmatch(value)) and value not in STOP_WORDS and not any(value.startswith(w) for w in NOT_NAME)
     if kind in ("ID_CARD",):
         return len(RE_ALNUM.sub("", value)) <= 2 and sum(c.isalnum() for c in value) >= 6
     if kind == "PHONE":
@@ -174,6 +255,9 @@ def anchor(page: PageData, enabled: set[str]) -> tuple[list[Hit], list[tuple[str
         value = line.text[k:e]
         if _starts_with_label(line.text, k):
             value = ""
+        # 标签后面紧跟“查房”“记录”等病历常用词：这是正文（如“上级医师查房，同意……”），不是表单字段
+        if any(value.startswith(w) for w in NOT_NAME if len(w) >= 2):
+            continue
         if _valid(kind, value) and kind in enabled:
             hits.append(Hit(kind, "anchor", page.index, lh.line, k, e, value))
             continue
