@@ -28,3 +28,6 @@ bench/perf/
 
 # 正文人名识别模型（由 deploy/ner_export.py 导出，约 100 MB，不入库）
 models/
+
+# 本单位表单模板（字段名与位置），只留本地
+templates/*.json

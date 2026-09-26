@@ -7,7 +7,7 @@ import re
 from rapidfuzz.distance import Hamming
 
 from ..schemas import Hit, PageData
-from . import ner, rules
+from . import ner, rules, templates
 from .anchors import NOT_NAME, anchor, date_signatures, table_signatures
 from .lexicon import STOP_WORDS
 
@@ -29,6 +29,10 @@ def page_hits(page: PageData, enabled: set[str], custom: list[str]):
                     hits.append(Hit("CUSTOM", "custom", page.index, li, m.start(), m.end(), w))
     ahits, fields = anchor(page, enabled)
     hits.extend(ahits)
+    # 表单模板：补出 OCR 没认出字段名的字段
+    thits, tfields = templates.apply(page, enabled, hits)
+    hits.extend(thits)
+    fields.extend(tfields)
     if {"PERSON", "STAFF"} & enabled:
         # 叙述里的人名：与已有命中重叠的不再重复
         for h in ner.page_names(page, enabled):

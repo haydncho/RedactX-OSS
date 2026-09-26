@@ -42,6 +42,8 @@ class Settings:
     # 正文人名识别模型目录；不存在时该功能关闭
     ner_dir: Path = field(default_factory=lambda: Path(os.environ.get("REDACTX_NER_DIR", Path(__file__).resolve().parent.parent / "models" / "ner")))
     ner_threads: int = int(os.environ.get("REDACTX_NER_THREADS", "4"))
+    # 常用表单模板目录（字段锚定的降级方案）；没有模板时不起作用
+    templates_dir: Path = field(default_factory=lambda: Path(os.environ.get("REDACTX_TEMPLATES", Path(__file__).resolve().parent.parent / "templates")))
 
     def __post_init__(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
