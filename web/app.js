@@ -14,6 +14,18 @@
     return n;
   };
 
+  // 图标：引用 index.html 里定义的 <symbol>
+  const icon = (name) => {
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("class", "ic");
+    svg.setAttribute("aria-hidden", "true");
+    const use = document.createElementNS(NS, "use");
+    use.setAttribute("href", `#i-${name}`);
+    svg.append(use);
+    return svg;
+  };
+
   const STORE_KEY = "redactx.settings.v1";
   const KEY_KEY = "redactx.apikey";
   const store = {
@@ -284,7 +296,7 @@
     for (const [code, n] of entries) {
       const info = entityInfo(code) || { name: code, group: "people" };
       const li = el("li", { class: typeFilter === code ? "active" : "", title: "点击只看这一类", onclick: () => { typeFilter = typeFilter === code ? null : code; renderSummary(); renderBoxes(); } },
-        el("i", { style: `background:${groupColor(info.group)}` }), info.name, el("span", { class: "n num", text: n }));
+        el("i", { style: `background:${groupColor(info.group)}` }), el("span", { class: "lb", title: info.name, text: info.name }), el("span", { class: "n num", text: n }));
       ul.append(li);
     }
     if (!entries.length) ul.append(el("li", { text: "未发现需要遮盖的内容" }));
@@ -337,7 +349,7 @@
     }
   }
 
-  const SRC_NAME = { rule: "规则", anchor: "字段锚定", "anchor-field": "填写区", propagate: "全文追踪", custom: "自定义词", color: "颜色", detector: "检测", "image-object": "图片对象", verify: "自检补打" };
+  const SRC_NAME = { rule: "规则", anchor: "字段锚定", "anchor-field": "填写区", propagate: "全文追踪", custom: "自定义词", color: "颜色", detector: "检测", "image-object": "图片对象", repeat: "跨页重复", watermark: "水印消除", verify: "自检补打" };
   function renderPageItems() {
     const ul = $("#page-items"); ul.replaceChildren();
     const items = itemsOf(page);
@@ -347,7 +359,8 @@
     for (const [k, n] of Object.entries(agg)) {
       const [type, src] = k.split("|");
       const info = entityInfo(type) || { group: "people", name: type };
-      ul.append(el("li", {}, el("i", { style: `background:${groupColor(info.group)}` }), `${info.name} × ${n}`, el("span", { class: "src", text: SRC_NAME[src] || src })));
+      const text = `${info.name} × ${n}`;
+      ul.append(el("li", {}, el("i", { style: `background:${groupColor(info.group)}` }), el("span", { class: "lb", title: text, text }), el("span", { class: "src", text: SRC_NAME[src] || src })));
     }
   }
 
@@ -355,6 +368,67 @@
     const stage = $("#stage");
     stage.classList.toggle("mode-after", state.view === "after");
     stage.classList.toggle("mode-before", state.view === "before");
+  }
+
+  // ---------- 缩放：100% 为适应窗口；⌘/Ctrl + 滚轮、触控板捏合、工具条、键盘 + − 0 ----------
+  const ZMIN = 0.25, ZMAX = 4, ZSTEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1, 1.25, 1.5, 2, 2.5, 3, 4];
+  let zoom = 1;
+
+  function fitWidth() {
+    const v = $("#viewer"), img = $("#img-after");
+    if (!img.naturalWidth) return 0;
+    const cs = getComputedStyle(v);
+    const aw = v.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const ah = v.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    return Math.max(40, Math.min(aw, ah * (img.naturalWidth / img.naturalHeight)));
+  }
+
+  // anchor：保持不动的点（相对视口的 clientX/Y），默认为画布中心
+  function setZoom(z, anchor) {
+    const v = $("#viewer"), stage = $("#stage");
+    z = Math.min(ZMAX, Math.max(ZMIN, z));
+    const w = fitWidth();
+    if (!w) { zoom = z; return; }
+    const vr = v.getBoundingClientRect();
+    const ax = anchor ? anchor.x : vr.left + vr.width / 2, ay = anchor ? anchor.y : vr.top + vr.height / 2;
+    const sr = stage.getBoundingClientRect();
+    const fx = sr.width ? (ax - sr.left) / sr.width : 0.5, fy = sr.height ? (ay - sr.top) / sr.height : 0.5;
+    zoom = z;
+    stage.style.setProperty("--page-w", `${Math.round(w * zoom)}px`);
+    // 让锚点下的那一点在缩放后仍停在光标下
+    const nr = stage.getBoundingClientRect();
+    v.scrollLeft += nr.left + fx * nr.width - ax;
+    v.scrollTop += nr.top + fy * nr.height - ay;
+    $("#zoom-level").textContent = `${Math.round(zoom * 100)}%`;
+    $("#zoom-out").disabled = zoom <= ZMIN + 1e-6;
+    $("#zoom-in").disabled = zoom >= ZMAX - 1e-6;
+  }
+
+  const stepZoom = (dir, anchor) => {
+    const next = dir > 0 ? ZSTEPS.find((s) => s > zoom + 1e-6) : [...ZSTEPS].reverse().find((s) => s < zoom - 1e-6);
+    setZoom(next ?? zoom, anchor);
+  };
+
+  function initZoom() {
+    const v = $("#viewer");
+    $("#zoom-in").onclick = () => stepZoom(1);
+    $("#zoom-out").onclick = () => stepZoom(-1);
+    $("#zoom-level").onclick = () => setZoom(1);
+    $("#zoom-fit").onclick = () => setZoom(1);
+    // 鼠标 ⌘/Ctrl + 滚轮；Chrome、Firefox 的触控板捏合也以 ctrlKey 滚轮事件送达。普通滚轮保持平移
+    v.addEventListener("wheel", (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+      setZoom(zoom * Math.exp(-dy * 0.0015), { x: e.clientX, y: e.clientY });
+    }, { passive: false });
+    // Safari 的触控板捏合
+    let g0 = 1;
+    v.addEventListener("gesturestart", (e) => { e.preventDefault(); g0 = zoom; });
+    v.addEventListener("gesturechange", (e) => { e.preventDefault(); setZoom(g0 * e.scale, { x: e.clientX, y: e.clientY }); });
+    v.addEventListener("gestureend", (e) => e.preventDefault());
+    $("#img-after").addEventListener("load", () => setZoom(zoom));
+    new ResizeObserver(() => setZoom(zoom)).observe(v);
   }
 
   function initHandle() {
@@ -388,7 +462,7 @@
           el("span", { class: "when num", text: when }),
           el("span", { text: `${(j.input_ext || "").toUpperCase()} · ${j.pages ?? "?"} 页${total != null ? ` · 遮盖 ${total} 处` : ""}` }),
           el("span", { class: `status ${j.status}`, text: ST[j.status] || j.status }),
-          j.status === "succeeded" ? el("button", { type: "button", text: "查看", onclick: () => openJob(j.id, j.input_ext) }) : el("span")));
+          j.status === "succeeded" ? el("button", { type: "button", onclick: () => openJob(j.id, j.input_ext) }, icon("eye"), "查看") : el("span")));
       }
     } catch (e) {
       if (e.status === 401) toast("需要 API Key，请点右上角设置");
@@ -424,6 +498,7 @@
     state.view = state.view || "compare";
     bindSeg("#seg-view", "view");
     initHandle();
+    initZoom();
     refreshHistory();
 
     $("#custom-words").addEventListener("input", (e) => { state.custom = e.target.value; save(); });
@@ -445,14 +520,14 @@
     window.addEventListener("drop", (e) => { e.preventDefault(); if (!$("#drop").hidden) return; const f = e.dataTransfer.files[0]; if (f) upload(f); });
 
     $("#btn-new").onclick = () => { clearTimeout(pollTimer); $("#job").hidden = true; $("#drop").hidden = false; job = null; report = null; };
-    $("#btn-delete").onclick = async () => {
-      if (!job?.id) return;
-      const btn = $("#btn-delete");
-      if (btn.dataset.confirm !== "1") { btn.dataset.confirm = "1"; btn.textContent = "再点一次确认删除"; setTimeout(() => { btn.dataset.confirm = ""; btn.textContent = "删除结果"; }, 3000); return; }
-      try { await api(`/v1/jobs/${job.id}`, { method: "DELETE" }); toast("已删除脱敏结果与预览"); } catch (e) { toast(e.message); }
-      btn.dataset.confirm = ""; btn.textContent = "删除结果";
+    // 删除前弹出确认框；默认焦点在“取消”上
+    const dlgDel = $("#dlg-delete");
+    $("#btn-delete").onclick = () => { if (job?.id) { dlgDel.returnValue = ""; dlgDel.showModal(); } };
+    dlgDel.addEventListener("close", async () => {
+      if (dlgDel.returnValue !== "ok" || !job?.id) return;
+      try { await api(`/v1/jobs/${job.id}`, { method: "DELETE" }); toast("已删除脱敏结果与预览"); } catch (e) { toast(e.message); return; }
       $("#btn-new").click(); refreshHistory();
-    };
+    });
     $("#pg-prev").onclick = () => gotoPage(page - 1);
     $("#pg-next").onclick = () => gotoPage(page + 1);
     $("#show-boxes").onchange = renderBoxes;
@@ -460,6 +535,10 @@
       if (!report || $("#result").hidden || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName)) return;
       if (e.key === "ArrowDown" || e.key === "PageDown") { e.preventDefault(); gotoPage(page + 1); }
       if (e.key === "ArrowUp" || e.key === "PageUp") { e.preventDefault(); gotoPage(page - 1); }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;  // 不拦截浏览器自身的 ⌘+ / ⌘−
+      if (e.key === "+" || e.key === "=") { e.preventDefault(); stepZoom(1); }
+      if (e.key === "-" || e.key === "_") { e.preventDefault(); stepZoom(-1); }
+      if (e.key === "0") { e.preventDefault(); setZoom(1); }
     });
 
     const dlg = $("#dlg-key");

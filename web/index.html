@@ -9,6 +9,32 @@
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
+<!-- 图标：线条风格，随文字颜色变化，不加载外部资源 -->
+<svg class="sprite" aria-hidden="true" focusable="false"><defs>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 13 9 5 9-5"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6l-7-3Z"/><path d="M9 12h6"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9-9-9Z"/><circle cx="7.5" cy="7.5" r="1.5"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M5 20V11M12 20V5M19 20v-6M3 20h18"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8l-5-5Z"/><path d="M14 3v5h5"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5"/></symbol>
+  <symbol id="i-check-all" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8 12 3 3 5-6"/></symbol>
+  <symbol id="i-square" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></symbol>
+  <symbol id="i-file-plus" viewBox="0 0 24 24"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8l-5-5Z"/><path d="M12 11v6M9 14h6"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 20h16"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></symbol>
+  <symbol id="i-chev-left" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></symbol>
+  <symbol id="i-chev-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-zoom-in" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M8 11h6M11 8v6"/></symbol>
+  <symbol id="i-zoom-out" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M8 11h6"/></symbol>
+  <symbol id="i-fit" viewBox="0 0 24 24"><path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4"/></symbol>
+</defs></svg>
 <header class="topbar">
   <div class="brand">
     <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="5" y="3" width="22" height="26" rx="3" class="mark-doc"/><rect x="9" y="9" width="14" height="3" rx="1.5" class="mark-line"/><rect x="9" y="15" width="9" height="3" rx="1.5" class="mark-pill"/><rect x="9" y="21" width="12" height="3" rx="1.5" class="mark-line"/></svg>
@@ -16,8 +42,8 @@
   </div>
   <div class="topbar-right">
     <span class="chip-local" title="所有识别与打码都在这台机器上完成，不调用外部模型"><i></i>本机处理 · 不联网</span>
-    <a class="toplink" href="/openapi.json" target="_blank" rel="noopener">接口描述</a>
-    <button class="nav-btn" id="btn-key" type="button">API Key</button>
+    <a class="toplink" href="/docs" target="_blank" rel="noopener"><svg class="ic" aria-hidden="true"><use href="#i-code"/></svg>接口文档</a>
+    <button class="nav-btn" id="btn-key" type="button"><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg>API Key</button>
     <button class="theme-btn" id="btn-theme" type="button" aria-label="切换到深色主题" title="切换到深色主题">
       <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
       <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2.5 12h2M19.5 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>
@@ -28,26 +54,26 @@
 <div class="layout">
   <aside class="settings" aria-label="脱敏设置">
     <section class="panel">
-      <h2 data-eyebrow="PRESET">场景预设</h2>
+      <h2 data-eyebrow="PRESET"><svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg>场景预设</h2>
       <div class="presets" id="presets" role="radiogroup" aria-label="场景预设"></div>
     </section>
 
     <section class="panel">
       <div class="panel-head">
-        <h2 data-eyebrow="FIELDS">脱敏字段与样式</h2>
-        <div class="mini-actions"><button type="button" id="sel-all">全选</button><button type="button" id="sel-none">全不选</button></div>
+        <h2 data-eyebrow="FIELDS"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg>脱敏字段与样式</h2>
+        <div class="mini-actions"><button type="button" id="sel-all"><svg class="ic" aria-hidden="true"><use href="#i-check-all"/></svg>全选</button><button type="button" id="sel-none"><svg class="ic" aria-hidden="true"><use href="#i-square"/></svg>全不选</button></div>
       </div>
       <div id="entity-groups"></div>
     </section>
 
     <section class="panel">
-      <h2 data-eyebrow="CUSTOM"><label for="custom-words">自定义词</label></h2>
+      <h2 data-eyebrow="CUSTOM"><svg class="ic" aria-hidden="true"><use href="#i-tag"/></svg><label for="custom-words">自定义词</label></h2>
       <p class="hint">每行一个，如院区名称、科室外号。至少 2 个字。</p>
       <textarea id="custom-words" rows="3" placeholder="某某医院东院区"></textarea>
     </section>
 
     <section class="panel">
-      <h2 data-eyebrow="OPTIONS">处理选项</h2>
+      <h2 data-eyebrow="OPTIONS"><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg>处理选项</h2>
       <div class="opt-row">
         <span class="opt-label">识别模式</span>
         <div class="seg" id="seg-mode" role="radiogroup" aria-label="识别模式">
@@ -107,7 +133,7 @@
         <span class="eyebrow">DROP · UPLOAD · REDACT</span>
         <h1>把文档拖到这里。</h1>
         <p>支持 PDF 与图片（JPG、PNG、TIFF），Word（doc、docx）、WPS、RTF、ODT、Excel、PPT、Markdown 和纯文本。扫描件、系统导出件、混合 PDF 都可以。</p>
-        <div class="cta-row"><button type="button" id="pick" class="btn primary lg">选择文件</button><span class="cta-hint">或直接拖入，也可以拖到页面任意位置</span></div>
+        <div class="cta-row"><button type="button" id="pick" class="btn primary lg"><svg class="ic" aria-hidden="true"><use href="#i-upload"/></svg>选择文件</button><span class="cta-hint">或直接拖入，也可以拖到页面任意位置</span></div>
         <div class="formats" aria-hidden="true"><span>PDF</span><span>JPG</span><span>PNG</span><span>TIFF</span><span>DOC</span><span>DOCX</span><span>WPS</span><span>RTF</span><span>XLSX</span><span>PPTX</span><span>MD</span><span>TXT</span></div>
         <p class="drop-note">文件只在本机处理。Word、WPS 等文档先在本机转成 PDF 再脱敏，输出为 PDF。原件处理完立即删除，脱敏结果按“结果保留”时长自动清除。</p>
       </div>
@@ -123,9 +149,9 @@
           </div>
         </div>
         <div class="job-actions">
-          <button type="button" class="btn ghost" id="btn-new">处理新文件</button>
-          <button type="button" class="btn ghost danger" id="btn-delete" hidden>删除结果</button>
-          <a class="btn primary" id="btn-download" hidden>下载脱敏文件</a>
+          <button type="button" class="btn ghost" id="btn-new"><svg class="ic" aria-hidden="true"><use href="#i-file-plus"/></svg>处理新文件</button>
+          <button type="button" class="btn ghost danger" id="btn-delete" hidden><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>删除结果</button>
+          <a class="btn primary" id="btn-download" hidden><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>下载脱敏文件</a>
         </div>
       </div>
 
@@ -145,26 +171,35 @@
           </div>
           <label class="check-inline"><input type="checkbox" id="show-boxes" checked> 显示遮盖框</label>
           <div class="pager">
-            <button type="button" class="icon-btn" id="pg-prev" aria-label="上一页">‹</button>
+            <button type="button" class="icon-btn" id="pg-prev" aria-label="上一页"><svg class="ic" aria-hidden="true"><use href="#i-chev-left"/></svg></button>
             <span class="num" id="pg-label">1 / 1</span>
-            <button type="button" class="icon-btn" id="pg-next" aria-label="下一页">›</button>
+            <button type="button" class="icon-btn" id="pg-next" aria-label="下一页"><svg class="ic" aria-hidden="true"><use href="#i-chev-right"/></svg></button>
           </div>
         </div>
         <div class="viewer-wrap">
           <div class="thumbs" id="thumbs" aria-label="页面缩略图"></div>
-          <div class="viewer" id="viewer">
-            <div class="stage" id="stage">
-              <img id="img-after" alt="脱敏后页面">
-              <div class="before-clip" id="before-clip"><img id="img-before" alt="原件页面"></div>
-              <div class="boxes" id="boxes"></div>
-              <div class="handle" id="handle" role="slider" aria-label="对比分隔线" tabindex="0" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><span></span></div>
+          <div class="viewer-pane">
+            <div class="viewer" id="viewer">
+              <div class="stage" id="stage">
+                <img id="img-after" alt="脱敏后页面">
+                <div class="before-clip" id="before-clip"><img id="img-before" alt="原件页面"></div>
+                <div class="boxes" id="boxes"></div>
+                <div class="handle" id="handle" role="slider" aria-label="对比分隔线" tabindex="0" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><span></span></div>
+              </div>
+            </div>
+            <div class="zoombar" role="toolbar" aria-label="缩放" title="⌘ / Ctrl + 滚轮或双指捏合缩放">
+              <button type="button" id="zoom-out" aria-label="缩小"><svg class="ic" aria-hidden="true"><use href="#i-zoom-out"/></svg></button>
+              <button type="button" id="zoom-level" class="num" aria-label="恢复为适应窗口">100%</button>
+              <button type="button" id="zoom-in" aria-label="放大"><svg class="ic" aria-hidden="true"><use href="#i-zoom-in"/></svg></button>
+              <span class="zsep" aria-hidden="true"></span>
+              <button type="button" id="zoom-fit" class="zfit" aria-label="适应窗口"><svg class="ic" aria-hidden="true"><use href="#i-fit"/></svg>适应</button>
             </div>
           </div>
           <aside class="summary" aria-label="识别结果">
-            <h3>遮盖统计</h3>
+            <h3><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg>遮盖统计</h3>
             <div class="total"><span class="num" id="sum-total">0</span> 处 · <span class="num" id="sum-pages">0</span> 页</div>
             <ul class="counts" id="counts"></ul>
-            <h3>本页</h3>
+            <h3><svg class="ic" aria-hidden="true"><use href="#i-file"/></svg>本页</h3>
             <ul class="page-items" id="page-items"></ul>
             <p class="hint" id="sum-foot"></p>
           </aside>
@@ -173,18 +208,26 @@
     </section>
 
     <section class="history" id="history-wrap" hidden>
-      <div class="history-head"><h2>最近任务</h2><span class="eyebrow">RECENT JOBS</span></div>
+      <div class="history-head"><h2><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg>最近任务</h2><span class="eyebrow">RECENT JOBS</span></div>
       <ul id="history"></ul>
     </section>
   </main>
 </div>
 
+<dialog id="dlg-delete" class="dlg-danger">
+  <form method="dialog">
+    <h3><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>删除脱敏结果？</h3>
+    <p class="hint">将立即删除本任务的脱敏文件、报告和预览图，删除后无法恢复。原件在处理完成时已经删除。</p>
+    <div class="dlg-actions"><button class="btn ghost" value="cancel" autofocus><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>取消</button><button class="btn danger-solid" value="ok"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>确认删除</button></div>
+  </form>
+</dialog>
+
 <dialog id="dlg-key">
   <form method="dialog">
-    <h3>API Key</h3>
+    <h3><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg>API Key</h3>
     <p class="hint">服务端设置了 REDACTX_API_KEY 时才需要填写。只保存在本浏览器。</p>
     <input type="password" id="key-input" autocomplete="off">
-    <div class="dlg-actions"><button class="btn ghost" value="cancel">取消</button><button class="btn primary" value="ok" id="key-save">保存</button></div>
+    <div class="dlg-actions"><button class="btn ghost" value="cancel"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>取消</button><button class="btn primary" value="ok" id="key-save"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>保存</button></div>
   </form>
 </dialog>
 
