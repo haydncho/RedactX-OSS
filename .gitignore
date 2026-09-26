@@ -24,3 +24,4 @@ __pycache__/
 
 # 内部交接文档（含样例描述与私有链接），不公开
 handoff.md
+bench/perf/
