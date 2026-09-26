@@ -244,7 +244,8 @@ def scan_page(p: Page, chars: str, dpi: int, paper: str, rng: random.Random, rot
     """扫描件：印刷底图 + 手写 + 盖章 + 纸张与扫描退化。返回 (整页图, 标准答案, 页面尺寸 pt)。
 
     hard 可选的难点：faint_seal 压在院名上的淡粉色低饱和印章；watermark 斜向院名水印；
-    big_sig 大号连笔签名（超出签名栏、带拖尾）。
+    big_sig 大号连笔签名（超出签名栏、带拖尾）；lowq 低质量扫描（重噪点、模糊、强 JPEG 压缩、歪斜更大）；
+    photo 手机拍照（透视变形、不均匀光照与阴影）。
     """
     w = Writer(chars)
     truths = w.text_page(p, rng, scan_base=True)
@@ -295,7 +296,7 @@ def scan_page(p: Page, chars: str, dpi: int, paper: str, rng: random.Random, rot
                 x, y = int(W * fx - wm.width / 2), int(H * fy - wm.height / 2)
                 _multiply(im, wm, x, y, alpha=1.0)
                 items.append((Truth(wtype, "redact", "watermark", [], wt), [x + bb[0], y + bb[1], x + bb[2], y + bb[3]]))
-    arr, M = _degrade(np.asarray(im), paper, rng, skew)
+    arr, M = _degrade(np.asarray(im), paper, rng, skew, hard)
     boxes = [_affine_box(b, M) for _, b in items]
     w_pt, h_pt = p.w, p.h
     if rotate:
@@ -328,7 +329,9 @@ def _multiply(im: Image.Image, rgba: Image.Image, x: int, y: int, alpha: float) 
     im.paste(Image.fromarray(np.clip(base, 0, 255).astype(np.uint8)))
 
 
-def _degrade(arr: np.ndarray, paper: str, rng: random.Random, skew: bool = True) -> tuple[np.ndarray, np.ndarray]:
+def _degrade(arr: np.ndarray, paper: str, rng: random.Random, skew: bool = True, hard: frozenset[str] = frozenset()) -> tuple[np.ndarray, np.ndarray]:
+    """纸张与扫描退化。返回退化后的图像与 3×3 坐标变换矩阵。
+    hard 里的 lowq（低质量传真式扫描）与 photo（手机拍照）只在加难形态里用，放在原有随机数之后，不影响其他形态。"""
     nrng = np.random.default_rng(rng.randint(0, 2**31))
     img = arr.astype(np.float32)
     h, w = img.shape[:2]
@@ -343,15 +346,40 @@ def _degrade(arr: np.ndarray, paper: str, rng: random.Random, skew: bool = True)
         img += nrng.normal(0, 3.5, (h, w, 1)).astype(np.float32)
     img = cv2.GaussianBlur(np.clip(img, 0, 255), (0, 0), 0.7)
     ang = rng.uniform(-0.6, 0.6) if skew else 0.0
+    if "lowq" in hard:
+        ang = rng.uniform(-2.5, 2.5)
     M = cv2.getRotationMatrix2D((w / 2, h / 2), ang, 1.0)
     border = tuple(float(v) for v in np.median(img.reshape(-1, 3)[:: 97], axis=0))
     img = cv2.warpAffine(img, M, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=border)
-    return np.clip(img, 0, 255).astype(np.uint8), M
+    M3 = np.vstack([M, [0, 0, 1]]).astype(np.float64)
+    if "lowq" in hard:
+        # 低质量扫描：更重的噪点与模糊，再做一次强 JPEG 压缩（块效应、振铃）
+        img = cv2.GaussianBlur(img, (0, 0), 1.1) + nrng.normal(0, 7, (h, w, 1)).astype(np.float32)
+        ok, buf = cv2.imencode(".jpg", np.clip(img, 0, 255).astype(np.uint8), [cv2.IMWRITE_JPEG_QUALITY, 30])
+        img = cv2.imdecode(buf, cv2.IMREAD_UNCHANGED).astype(np.float32)
+    if "photo" in hard:
+        # 手机拍照：透视变形（四角随机内收）、不均匀光照与一道斜向阴影，背景是深色桌面
+        d = [(rng.uniform(0.01, 0.05) * w, rng.uniform(0.01, 0.04) * h) for _ in range(4)]
+        src = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
+        dst = np.float32([[d[0][0], d[0][1]], [w - d[1][0], d[1][1]], [w - d[2][0], h - d[2][1]], [d[3][0], h - d[3][1]]])
+        P = cv2.getPerspectiveTransform(src, dst)
+        img = cv2.warpPerspective(img, P, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(70, 66, 60))
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+        gx, gy = rng.uniform(-1, 1), rng.uniform(-1, 1)
+        light = 0.93 + 0.1 * ((xx / w - 0.5) * gx + (yy / h - 0.5) * gy)
+        s0 = rng.uniform(0.3, 0.7)
+        shadow = 1 - 0.18 / (1 + np.exp(-((xx / w + yy / h) / 2 - s0) * 40))
+        img = img * (light * shadow)[..., None] + nrng.normal(0, 4, (h, w, 1)).astype(np.float32)
+        M3 = P @ M3
+    return np.clip(img, 0, 255).astype(np.uint8), M3
 
 
 def _affine_box(b, M) -> list[float]:
+    """框的四角经变换（2×3 仿射或 3×3 透视）后的外接矩形。"""
     x0, y0, x1, y1 = b
-    pts = np.array([[x0, y0, 1], [x1, y0, 1], [x0, y1, 1], [x1, y1, 1]], np.float32) @ M.T
+    pts = np.array([[x0, y0, 1], [x1, y0, 1], [x0, y1, 1], [x1, y1, 1]], np.float64) @ np.asarray(M, np.float64).T
+    if pts.shape[1] == 3:
+        pts = pts[:, :2] / pts[:, 2:3]
     return [float(pts[:, 0].min()), float(pts[:, 1].min()), float(pts[:, 0].max()), float(pts[:, 1].max())]
 
 

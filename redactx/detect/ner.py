@@ -23,12 +23,15 @@ log = logging.getLogger("redactx.ner")
 
 WINDOW = 200  # 每段送入模型的字数；相邻两段重叠 OVERLAP 字，重叠处取靠近段中间的那一段的结果
 OVERLAP = 40
+BATCH = 32  # 一次送入模型的窗口数
 MIN_SCORE = 0.85  # 人名各字概率的均值下限
 SEED_SCORE = 0.97  # 达到此值的人名作为全文追踪的种子
 PROSE_MIN = 12  # 送入模型的句段至少这么多字，且含下列标点之一
 PROSE_MARKS = "，。；、（"
 # 人名后紧跟称谓或常用动词时，模型有时把它的首字并进人名（“白主任”认成“白主”）
 AFTER_NAME = ("主任", "代为", "护士", "医师", "医生", "大夫", "教授", "表示", "要求")
+# 人名后面紧跟药名后半截时，其实是药名的前半截（“林可霉素”认成“林可”）
+DRUG_TAILS = ("霉素", "沙星", "西林", "他汀", "洛尔", "地平", "普利", "沙坦", "替丁", "拉唑", "咪唑", "硝唑", "韦林", "卡因", "松片", "片", "胶囊", "注射液", "颗粒", "口服液")
 STAFF_CUES = ("医师", "医生", "主任", "护士", "护师", "教授", "大夫", "术者", "助手", "麻醉", "查房", "会诊")
 
 _lock = threading.Lock()
@@ -61,10 +64,9 @@ def available() -> bool:
     return _load() is not None
 
 
-def _page_text(page: PageData) -> tuple[str, list[tuple[int, int] | None]]:
-    """取出本页的叙述性文字拼成一段：折行的句子直接相连（人名可能被拆到两行），不同句段之间插入句号。
-    表格、字段行等短句段不送入模型（字段里的人名由字段锚定负责），以节省时间。
-    返回文字与每个字对应的 (行, 字序号)，插入的分隔符对应 None。"""
+def _page_segments(page: PageData) -> list[tuple[str, list[tuple[int, int]]]]:
+    """本页的叙述性句段：折行的句子拼回整句（人名可能被拆到两行）。表格、字段行等短句段跳过
+    （字段里的人名由字段锚定负责），以节省时间。返回 [(文字, 每个字对应的 (行, 字序号))]。"""
     lines = [(li, ln) for li, ln in enumerate(page.lines) if ln.chars]
     widths = sorted(ln.box[2] - ln.box[0] for _, ln in lines)
     full = widths[int(len(widths) * 0.8)] if widths else 0
@@ -78,18 +80,24 @@ def _page_text(page: PageData) -> tuple[str, list[tuple[int, int] | None]]:
         prev = ln
     if cur:
         segs.append(cur)
-    text, where = [], []
+    out = []
     for seg in segs:
-        s = "".join(ch for ch, _ in seg)
-        if len(s) < PROSE_MIN or not any(p in s for p in PROSE_MARKS):
-            continue
+        text = "".join(ch for ch, _ in seg)
+        if len(text) >= PROSE_MIN and any(p in text for p in PROSE_MARKS):
+            out.append((text, [w for _, w in seg]))
+    return out
+
+
+def _page_text(page: PageData) -> tuple[str, list[tuple[int, int] | None]]:
+    """各叙述句段以句号相连成一段（只用于检查），分隔符对应 None。"""
+    text, where = "", []
+    for t, w in _page_segments(page):
         if text:
-            text.append("。")
+            text += "。"
             where.append(None)
-        for ch, w in seg:
-            text.append(ch)
-            where.append(w)
-    return "".join(text), where
+        text += t
+        where += w
+    return text, where
 
 
 def _surname_start(v: str) -> bool:
@@ -107,46 +115,56 @@ def _is_name(v: str) -> bool:
 
 def find_names(text: str) -> list[tuple[int, int, float]]:
     """在一段文字里找人名，返回 (起, 止, 分数)。"""
+    return find_names_batch([text])[0]
+
+
+def find_names_batch(texts: list[str]) -> list[list[tuple[int, int, float]]]:
+    """多段文字一起送入模型（各段互不影响：前一句 OCR 错得厉害时不会拖累后一句），分别返回人名。"""
     m = _load()
-    if m is None or not text:
-        return []
+    if m is None or not any(texts):
+        return [[] for _ in texts]
     sess, tok, labels = m
     b_per, i_per = labels.index("B-PER"), labels.index("I-PER")
-    probs = np.zeros((len(text), len(labels)), np.float32)
-    weight = np.zeros(len(text), np.float32)
-    starts = list(range(0, max(len(text) - OVERLAP, 1), WINDOW - OVERLAP))
-    encs = [tok.encode(text[a : a + WINDOW]) for a in starts]
-    n = max(len(e.ids) for e in encs)
-    ids = np.zeros((len(encs), n), np.int64)
-    mask = np.zeros_like(ids)
-    for r, e in enumerate(encs):
-        ids[r, : len(e.ids)] = e.ids
-        mask[r, : len(e.ids)] = 1
-    logits = sess.run(None, {"input_ids": ids, "attention_mask": mask, "token_type_ids": np.zeros_like(ids)})[0]
-    ex = np.exp(logits - logits.max(-1, keepdims=True))
-    p = ex / ex.sum(-1, keepdims=True)
-    for r, (a, e) in enumerate(zip(starts, encs)):
-        seg = min(WINDOW, len(text) - a)
-        for t, (o0, o1) in enumerate(e.offsets):
-            if o1 <= o0:
-                continue  # [CLS]、[SEP]
-            # 越靠近本段中间越可信
-            w = 1.0 + min(o0, seg - o0)
-            for k in range(a + o0, a + o1):
-                probs[k] += w * p[r, t]
-                weight[k] += w
-    probs /= np.maximum(weight, 1e-6)[:, None]
-    out, k = [], 0
-    per = probs[:, b_per] + probs[:, i_per]
-    while k < len(text):
-        if probs[k].argmax() in (b_per, i_per):
-            j = k + 1
-            while j < len(text) and probs[j].argmax() == i_per:
-                j += 1
-            out.append((k, j, float(per[k:j].mean())))
-            k = j
-        else:
-            k += 1
+    jobs = [(ti, a) for ti, t in enumerate(texts) if t for a in range(0, max(len(t) - OVERLAP, 1), WINDOW - OVERLAP)]
+    encs = [tok.encode(texts[ti][a : a + WINDOW]) for ti, a in jobs]
+    probs = [np.zeros((len(t), len(labels)), np.float32) for t in texts]
+    weight = [np.zeros(len(t), np.float32) for t in texts]
+    for b0 in range(0, len(encs), BATCH):
+        chunk = encs[b0 : b0 + BATCH]
+        n = max(len(e.ids) for e in chunk)
+        ids = np.zeros((len(chunk), n), np.int64)
+        mask = np.zeros_like(ids)
+        for r, e in enumerate(chunk):
+            ids[r, : len(e.ids)] = e.ids
+            mask[r, : len(e.ids)] = 1
+        logits = sess.run(None, {"input_ids": ids, "attention_mask": mask, "token_type_ids": np.zeros_like(ids)})[0]
+        ex = np.exp(logits - logits.max(-1, keepdims=True))
+        p = ex / ex.sum(-1, keepdims=True)
+        for r, e in enumerate(chunk):
+            ti, a = jobs[b0 + r]
+            seg = min(WINDOW, len(texts[ti]) - a)
+            for t, (o0, o1) in enumerate(e.offsets):
+                if o1 <= o0:
+                    continue  # [CLS]、[SEP]
+                w = 1.0 + min(o0, seg - o0)  # 越靠近窗口中间越可信
+                for k in range(a + o0, a + o1):
+                    probs[ti][k] += w * p[r, t]
+                    weight[ti][k] += w
+    out = []
+    for text, pr, wt in zip(texts, probs, weight):
+        pr = pr / np.maximum(wt, 1e-6)[:, None]
+        per = pr[:, b_per] + pr[:, i_per]
+        found, k = [], 0
+        while k < len(text):
+            if pr[k].argmax() in (b_per, i_per):
+                j = k + 1
+                while j < len(text) and pr[j].argmax() == i_per:
+                    j += 1
+                found.append((k, j, float(per[k:j].mean())))
+                k = j
+            else:
+                k += 1
+        out.append(found)
     return out
 
 
@@ -155,20 +173,27 @@ def page_names(page: PageData, enabled: set[str] | None = None) -> list[Hit]:
     enabled = enabled if enabled is not None else {"PERSON", "STAFF"}
     if not ({"PERSON", "STAFF"} & enabled) or not available():
         return []
-    text, where = _page_text(page)
+    segs = _page_segments(page)
     hits = []
-    for a, b, s in find_names(text):
+    for (text, where), found in zip(segs, find_names_batch([t for t, _ in segs])):
+        hits += _to_hits(page, text, where, found, enabled)
+    return hits
+
+
+def _to_hits(page: PageData, text: str, where: list[tuple[int, int]], found, enabled: set[str]) -> list[Hit]:
+    hits = []
+    for a, b, s in found:
         while b - a > 1 and any(text[b - 1 :].startswith(w) for w in AFTER_NAME):
             b -= 1
         v = text[a:b]
-        if s < MIN_SCORE or not _is_name(v):
+        if s < MIN_SCORE or not _is_name(v) or any(text[b:].startswith(t) for t in DRUG_TAILS):
             continue
         ctx = text[max(0, a - 4) : a] + "|" + text[b : b + 4]
         typ = "STAFF" if any(c in ctx for c in STAFF_CUES) else "PERSON"
         if typ not in enabled:
             typ = "PERSON" if "PERSON" in enabled else "STAFF"
         # 跨行的人名拆成每行一个命中
-        spots = [where[k] for k in range(a, b) if where[k] is not None]
+        spots = [where[k] for k in range(a, b)]
         for li in dict.fromkeys(li for li, _ in spots):
             ks = [k for l2, k in spots if l2 == li]
             hits.append(Hit(typ, "ner", page.index, li, min(ks), max(ks) + 1, v, seed=s >= SEED_SCORE))

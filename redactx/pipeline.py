@@ -232,7 +232,9 @@ def _has_printed_digits(pd: PageData, rect) -> bool:
     chars = [c for ln in pd.lines for c in ln.chars if c.box[0] >= x0 and c.box[2] <= x1 and c.box[1] >= y0 and c.box[3] <= y1]
     if len(chars) < 2:
         return False
-    return sum(c.ch.isdigit() or c.ch in "-/:年月日时分" for c in chars) >= 0.5 * len(chars)
+    # 没有数字就不是日期或编号：连笔签名常被认成“覃月”这类带“月”“日”的字，不能因此当成日期丢掉
+    digits = sum(c.ch.isdigit() for c in chars)
+    return digits > 0 and digits + sum(c.ch in "-/:年月日时分" for c in chars) >= 0.5 * len(chars)
 
 
 def _preview(img: np.ndarray, path: Path, max_w: int = 1400) -> None:

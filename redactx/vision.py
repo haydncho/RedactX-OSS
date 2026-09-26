@@ -85,6 +85,28 @@ def codes(img: np.ndarray, dpi: int = 200) -> list[Rect]:
     return out
 
 
+def _line_kernel(length: int, angle: float) -> np.ndarray:
+    """长 length、倾斜 angle 度的单像素直线结构元素（0° 为水平）。"""
+    t = np.deg2rad(angle)
+    dx, dy = np.cos(t) * (length - 1) / 2, np.sin(t) * (length - 1) / 2
+    w, h = int(np.ceil(abs(dx))) * 2 + 1, int(np.ceil(abs(dy))) * 2 + 1
+    k = np.zeros((h, w), np.uint8)
+    cv2.line(k, (int(round(w / 2 - dx - 0.5)), int(round(h / 2 - dy - 0.5))), (int(round(w / 2 + dx - 0.5)), int(round(h / 2 + dy - 0.5))), 1, 1)
+    return k
+
+
+_RULE_ANGLES = (-4, -2.5, -1, 0, 1, 2.5, 4)
+
+
+def _rule_lines(ink: np.ndarray, kh: int, kv: int) -> np.ndarray:
+    """表格线、下划线：长度达到 kh（横线）或 kv（竖线）的直线笔画。允许 ±4° 的倾斜（扫描歪斜、手机拍照的透视）。"""
+    out = np.zeros_like(ink)
+    for a in _RULE_ANGLES:
+        out |= cv2.morphologyEx(ink, cv2.MORPH_OPEN, _line_kernel(kh, a))
+        out |= cv2.morphologyEx(ink, cv2.MORPH_OPEN, _line_kernel(kv, 90 + a))
+    return out
+
+
 def _ink_mask(img: np.ndarray, rect: Rect, exclude: list[Rect] | None = None):
     """填写区内的笔迹掩码：去掉横线、竖线（下划线和表格线），只留下有一定高度的笔画。"""
     hgt, wid = img.shape[:2]
@@ -93,12 +115,12 @@ def _ink_mask(img: np.ndarray, rect: Rect, exclude: list[Rect] | None = None):
     if x1 - x0 < 6 or y1 - y0 < 6:
         return None, (x0, y0)
     crop = cv2.cvtColor(img[y0:y1, x0:x1], cv2.COLOR_RGB2GRAY)
-    thr = min(150, int(np.percentile(crop, 60)) - 50)
+    # 相对纸色取阈值：白纸上模糊、压缩后的浅色手写（灰度 150–190）也算墨迹；牛皮纸等深色纸不变
+    paper = float(np.percentile(crop, 60))
+    thr = min(paper - 50, 0.8 * paper)
     ink = (crop < thr).astype(np.uint8)
     rh = y1 - y0
-    hk = cv2.getStructuringElement(cv2.MORPH_RECT, (max(12, int(rh * 0.9)), 1))
-    vk = cv2.getStructuringElement(cv2.MORPH_RECT, (1, max(12, int(rh * 0.7))))
-    lines = cv2.morphologyEx(ink, cv2.MORPH_OPEN, hk) | cv2.morphologyEx(ink, cv2.MORPH_OPEN, vk)
+    lines = _rule_lines(ink, max(12, int(rh * 0.9)), max(12, int(rh * 0.7)))
     lines = cv2.dilate(lines, np.ones((3, 3), np.uint8))
     ink = ink & (1 - lines)
     # 已识别的打印字不算填写笔迹（如签名栏右侧“与患者关系”的“与”）
@@ -472,9 +494,7 @@ def grow_strokes(img: np.ndarray, rect: Rect, avoid: list[Rect]) -> Rect:
     not_red = (rgb[..., 0] - np.maximum(rgb[..., 1], rgb[..., 2])) < 35  # 印章的红色笔画不算签名
     ink = ((gray < _paper(gray) - 90) & not_red).astype(np.uint8)
     k = max(15, int(1.5 * h))
-    lines = cv2.morphologyEx(ink, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (k, 1)))
-    lines |= cv2.morphologyEx(ink, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (1, k)))
-    ink &= 1 - cv2.dilate(lines, np.ones((3, 3), np.uint8))
+    ink &= 1 - cv2.dilate(_rule_lines(ink, k, k), np.ones((3, 3), np.uint8))
     n, lab, stats, _ = cv2.connectedComponentsWithStats(ink, connectivity=8)
     rx0, ry0, rx1, ry1 = int(x0) - wx0, int(y0) - wy0, int(x1) - wx0, int(y1) - wy0
     inside = set(np.unique(lab[max(ry0, 0) : max(ry1, 0), max(rx0, 0) : max(rx1, 0)]).tolist()) - {0}

@@ -50,6 +50,8 @@ def uscc_ok(s: str) -> bool:
 RE_ID = re.compile(r"(?<![0-9A-Za-z])\d{17}[\dXx](?![0-9A-Za-z])")
 RE_MOBILE = re.compile(r"(?<!\d)(?:\+?86[- ]?)?1[3-9]\d[- ]?\d{4}[- ]?\d{4}(?!\d)")
 RE_LANDLINE = re.compile(r"(?<![\d-])0\d{2,3}[-－—]\d{7,8}(?!\d)")
+# 低质量扫描里连字符常被 OCR 认成点、空格或下划线（“电话：0522.3964869”）：前面紧挨着电话字样时才算，免得把金额、小数当成电话
+RE_LANDLINE_LOOSE = re.compile(r"(?:电话|联系|手机|座机|传真|[Tt][Ee][Ll])[^\d]{0,4}(0\d{2,3}[.·_ ]\d{7,8})(?![\d.])")
 RE_BANK = re.compile(r"(?<!\d)\d{16,19}(?!\d)")
 RE_USCC = re.compile(r"(?<![0-9A-Z])[0-9A-HJ-NP-RTUWXY]{2}\d{6}[0-9A-HJ-NP-RTUWXY]{10}(?![0-9A-Z])")
 RE_EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
@@ -113,6 +115,10 @@ def find(text: str) -> list[tuple[str, int, int]]:
         if free(a, b):
             add("PHONE", a, b)
     for a, b, s in _spans(RE_LANDLINE, text):
+        if free(a, b):
+            add("PHONE", a, b)
+    for m in RE_LANDLINE_LOOSE.finditer(text):
+        a, b = m.span(1)
         if free(a, b):
             add("PHONE", a, b)
     for a, b, s in _spans(RE_BANK, text):
