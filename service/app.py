@@ -245,7 +245,16 @@ async def redact_sync(
     return Response(data, media_type=media, headers={"X-Redact-Counts": json.dumps(report["counts"]), "Cache-Control": "no-store"})
 
 
-app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
+class NoCacheStatic(StaticFiles):
+    """静态文件每次都向服务端校验（ETag 未变时返回 304），升级后浏览器不会继续用旧的样式和脚本。"""
+
+    def file_response(self, *args, **kwargs):
+        resp = super().file_response(*args, **kwargs)
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+
+app.mount("/static", NoCacheStatic(directory=WEB_DIR), name="static")
 
 
 @app.get("/docs", include_in_schema=False)

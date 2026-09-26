@@ -546,6 +546,23 @@
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  // 拖动调整高度时限制在 CSS 的 min-height 与 max-height 之间。
+  // 部分浏览器拖动时只写入内联 height、不受最大最小值约束，这里在拖动中和松手后把高度夹回范围内。
+  function clampResize(ta) {
+    const clamp = () => {
+      if (!ta.style.height) return;
+      const cs = getComputedStyle(ta);
+      const min = parseFloat(cs.minHeight) || 0;
+      const max = parseFloat(cs.maxHeight) || Infinity;
+      const h = parseFloat(ta.style.height);
+      const v = Math.min(max, Math.max(min, h));
+      if (v !== h) ta.style.height = `${v}px`;
+    };
+    if ("ResizeObserver" in window) new ResizeObserver(clamp).observe(ta);
+    ta.addEventListener("pointerup", clamp);
+    ta.addEventListener("mouseup", clamp);
+  }
+
   // ---------- 启动 ----------
   async function init() {
     try {
@@ -570,6 +587,7 @@
     refreshHistory();
 
     $("#custom-words").addEventListener("input", (e) => { state.custom = e.target.value; save(); });
+    clampResize($("#custom-words"));
     $("#opt-verify").addEventListener("change", (e) => { state.verify = e.target.checked; save(); });
     $("#opt-retention").addEventListener("change", (e) => { state.retention = e.target.value; save(); });
     $("#sel-toggle").onclick = (ev) => {
