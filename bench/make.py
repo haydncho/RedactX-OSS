@@ -2,12 +2,16 @@
 
     python -m bench.make --out bench/out --cases 3
 
-每份病案 4 页（病案首页、检验报告单、病程记录、内镜报告），按以下形态各出一份：
+每份病案 4 页（病案首页、检验报告单、病程记录、内镜报告），扫描类形态另加第 5 页手写日常病程
+（手写日期与诊断、各种写法的医师签名）。按以下形态各出一份：
   text     系统导出：全部带文字层，签名为电子签名小图，Logo 跨页重复
+  textwm   系统导出，加文字层院名水印（旋转的浅灰半透明文字对象，平铺）
   scan     白纸扫描 200 DPI：手写姓名与签名、红章压字、轻微歪斜
   kraft    牛皮纸扫描 300 DPI
   rotated  横放扫描：页面横向，内容旋转 90°
   mixed    混合：文字层页与扫描页交替
+  hard     白纸扫描加难点：淡粉色低饱和印章压院名、平铺斜向院名水印（压在正文上）、大号连笔签名
+  mrc      300 DPI 扫描按复印机 MRC 分层压缩：1 位文字蒙版 + 150 DPI 彩色底图
 输出 docs/<名称>.pdf 与 truth/<名称>.json（标准答案，坐标为归一化页面坐标）。
 """
 
@@ -22,14 +26,23 @@ from . import render
 from .fakes import make_case
 from .forms import case_pages
 
-# 名称 -> 每页的渲染方式：("text",) 或 ("scan", dpi, 纸张, 是否横放)
+# 名称 -> 每页的渲染方式：("text", 水印) 或 ("scan", dpi, 纸张, 是否横放, 难点)。
+# 第 5 页（手写病程）只有扫描类形态才有：模式列表比页面少时，多出的页不生成。
+_ALL_HARD = frozenset({"faint_seal", "watermark", "big_sig"})
+_T, _TW = ("text", False), ("text", True)
+_S200 = ("scan", 200, "white", False, frozenset())
 VARIANTS = {
-    "text": [("text",)] * 4,
-    "scan": [("scan", 200, "white", False)] * 4,
-    "kraft": [("scan", 300, "kraft", False)] * 4,
-    "rotated": [("scan", 200, "white", True)] * 4,
-    "mixed": [("text",), ("scan", 200, "white", False), ("text",), ("scan", 200, "white", False)],
+    "text": [_T] * 4,
+    "textwm": [_TW] * 4,
+    "scan": [_S200] * 5,
+    "kraft": [("scan", 300, "kraft", False, frozenset())] * 5,
+    "rotated": [("scan", 200, "white", True, frozenset())] * 5,
+    "mixed": [_T, _S200, _T, _S200],
+    "hard": [("scan", 200, "white", False, _ALL_HARD)] * 5,
+    "mrc": [("scan", 300, "white", False, frozenset())] * 5,
 }
+# 这些形态按复印机 MRC 分层压缩写出
+MRC_VARIANTS = {"mrc"}
 
 
 def build(case_seed: int, variant: str, out_dir: Path) -> Path:
@@ -38,21 +51,27 @@ def build(case_seed: int, variant: str, out_dir: Path) -> Path:
     chars = render.page_chars(pages)
     rng = random.Random(case_seed * 7919 + len(variant))
     w = render.Writer(chars)
-    truth = []
+    truth, scans = [], []
     for i, (p, mode) in enumerate(zip(pages, VARIANTS[variant])):
         if mode[0] == "text":
-            items = w.text_page(p, rng)
+            items = w.text_page(p, rng, watermark=mode[1])
         else:
-            _, dpi, paper, rot = mode
-            im, items, (w_pt, h_pt) = render.scan_page(p, chars, dpi, paper, rng, rotate=rot)
-            w.image_page(im, w_pt, h_pt)
+            _, dpi, paper, rot, hard = mode
+            im, items, (w_pt, h_pt) = render.scan_page(p, chars, dpi, paper, rng, rotate=rot, hard=hard)
+            if variant in MRC_VARIANTS:
+                scans.append((im, w_pt, h_pt))
+            else:
+                w.image_page(im, w_pt, h_pt)
         truth += [t.json(i + 1) for t in items]
     name = f"{variant}-{case_seed:03d}"
     (out_dir / "docs").mkdir(parents=True, exist_ok=True)
     (out_dir / "truth").mkdir(parents=True, exist_ok=True)
     pdf_path = out_dir / "docs" / f"{name}.pdf"
-    w.save(pdf_path)
-    meta = {"name": name, "variant": variant, "case_seed": case_seed, "pages": len(pages), "items": truth}
+    if variant in MRC_VARIANTS:
+        render.write_mrc_pdf(scans, pdf_path)
+    else:
+        w.save(pdf_path)
+    meta = {"name": name, "variant": variant, "case_seed": case_seed, "pages": len(VARIANTS[variant]), "items": truth}
     (out_dir / "truth" / f"{name}.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     return pdf_path
 

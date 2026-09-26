@@ -24,7 +24,7 @@ NAMES = {
     "SEAL": "印章", "LOGO": "Logo", "QRCODE": "二维码", "DATE": "日期", "DIAGNOSIS": "诊断与编码", "LAB_RESULT": "检验结果",
     "SEX": "性别", "AGE": "年龄", "FEE": "费用", "PHOTO": "临床照片",
 }
-FORMS = {"print": "印刷", "hand": "手写", "image": "图片", "seal": "印章"}
+FORMS = {"print": "印刷", "hand": "手写", "image": "图片", "seal": "印章", "faint": "淡色印章", "watermark": "水印"}
 
 
 def _aspects(pdf: Path) -> dict[int, float]:
