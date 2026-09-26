@@ -16,6 +16,7 @@ _LABEL_MAX = max(len(k) for k in LABELS)
 _STOP_MAX = max(len(k) for k in STOP_WORDS)
 SEPS = set("：:;；")
 SIGN_SUFFIX = {"签名", "签字", "签章"}
+ROLE_TAILS = {"医生", "医师", "护士"}
 SOFT_SEPS = set("：:()（）[]【】 _＿-—")
 PUNCT_PRE = set("：:，,；;。.、()（）[]【】 |｜/")
 NOT_NAME = set(
@@ -77,8 +78,9 @@ def find_labels(page: PageData) -> list[LabelHit]:
                 j += len(suffix)
                 lab = text[i:j]
             pre_ok = i == 0 or text[i - 1] in PUNCT_PRE or text[i - 1].isdigit() or _gap(line, i - 1, i) > 0.4
-            # “谈话医师签名：”：签名标签后面带冒号时，前面紧挨着别的字（词表里没有的角色词）也算
-            if not pre_ok and "签" in lab and j < len(text) and text[j] in SEPS:
+            # “谈话医师签名：”“谈话医生：”“经治医师：”：签名或医护标签后面带冒号时，
+            # 前面紧挨着别的字（词表里没有的角色词）也算
+            if not pre_ok and ("签" in lab or lab in ROLE_TAILS) and j < len(text) and text[j] in SEPS:
                 pre_ok = True
             # 通用词在行尾时没有冒号或间隔可作凭据（多为正文折行，如“……（患者”），只有独占一行才算标签；
             # 签名类标签除外：“……自愿接受治疗。签名 （手写）”里的“签名”正在句末

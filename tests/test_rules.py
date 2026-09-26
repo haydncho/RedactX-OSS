@@ -164,3 +164,12 @@ def test_very_far_word_is_not_the_name():
     ln = _line("麻醉医师签名 护理", gaps={7: 150})
     hits, _ = anchor(PageData(0, 1000, 1000, lines=[ln]), {"STAFF", "SIGNATURE"})
     assert hits == []
+
+
+def test_role_word_plus_doctor_with_colon():
+    # “谈话医生：”：词表里没有“谈话医生”，“医生”前面紧挨着“话”，带冒号时仍是医护标签
+    page = PageData(0, 1000, 1000, lines=[_ocr_line("谈话医生：")])
+    _, fields = anchor(page, {"STAFF"})
+    assert [f[1] for f in fields] == ["医生"]
+    # 正文里的“医生”（无冒号）不受影响
+    assert anchor(PageData(0, 1000, 1000, lines=[_ocr_line("由谈话医生告知病情")]), {"STAFF"}) == ([], [])

@@ -107,3 +107,51 @@ def test_faded_name_stamp_detected():
     cv2.rectangle(img, (200, 200), (300, 290), (222, 197, 190), 6)
     cv2.putText(img, "AB", (215, 265), cv2.FONT_HERSHEY_SIMPLEX, 1.4, (222, 197, 190), 5)
     assert len(vision.red_seals(img, DPI)) == 1
+
+
+def _band_page(angle_deg):
+    img = np.full((1400, 1000, 3), 250, np.uint8)
+    for k in range(30):  # 一行行横排的深色正文
+        cv2.putText(img, "record text line", (60, 60 + k * 44), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (30, 30, 30), 2)
+    return img
+
+
+def test_watermark_bands_only_at_watermark_angle():
+    wm = np.array([184, 181, 186], np.float32)
+    # 斜向的浅灰水印：沿 -44° 成带，应被擦除
+    img = _band_page(-44)
+    tile = np.full((120, 900, 3), 255, np.uint8)
+    cv2.putText(tile, "WATERMARK NAME", (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 2.4, (184, 181, 186), 9)
+    M = cv2.getRotationMatrix2D((450, 60), 44, 1.0)
+    rot = cv2.warpAffine(tile, M, (900, 900), borderValue=(255, 255, 255))
+    region = img[250:1150, 50:950]
+    np.copyto(region, np.minimum(region, rot))
+    before = (np.abs(img.astype(int) - wm).sum(-1) < 40).sum()
+    assert vision.erase_watermark_bands(img, -44.0, wm) is not None
+    after = (np.abs(img.astype(int) - wm).sum(-1) < 40).sum()
+    assert after < 0.5 * before
+    # 横排的浅灰正文（不斜）：不在 -44° 成带，不擦
+    img2 = np.full((1400, 1000, 3), 250, np.uint8)
+    for k in range(30):
+        cv2.putText(img2, "light gray printed row", (60, 60 + k * 44), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (184, 181, 186), 3)
+    assert vision.erase_watermark_bands(img2, -44.0, wm) is None
+
+
+def test_seal_ring_text_is_not_a_watermark():
+    # 淡红印章的环形文字（刻着院名，斜排）不是水印
+    import math
+    from PIL import Image, ImageDraw, ImageFont
+    from bench import fonts
+
+    path, idx = fonts.print_font()
+    f = ImageFont.truetype(path, 44, index=idx)
+    im = Image.new("RGB", (900, 900), (250, 250, 250))
+    name = "澄岚市中医院检验专用章"
+    for k, ch in enumerate(name):  # 沿圆弧排字
+        ang = math.radians(-150 + k * 12)
+        tile = Image.new("RGBA", (60, 60), (0, 0, 0, 0))
+        ImageDraw.Draw(tile).text((30, 30), ch, font=f, fill=(236, 150, 160, 255), anchor="mm")
+        tile = tile.rotate(-math.degrees(ang) - 90, resample=Image.BICUBIC)
+        im.paste(tile, (int(450 + 300 * math.cos(ang) - 30), int(450 + 300 * math.sin(ang) - 30)), tile)
+    wms = vision.watermarks(np.asarray(im), ["澄岚市中医院"], lambda t: False, all_slanted=True)
+    assert wms == []
