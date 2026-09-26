@@ -21,7 +21,7 @@ import numpy as np
 import pikepdf
 from PIL import Image
 
-from . import ocr, redact, vision
+from . import ocr, pdfwm, redact, vision
 from .catalog import ENTITY_BY_CODE, STYLE_CODES
 from .detect import engine, rules
 from .detect.anchors import DATE_SIGN_CUT
@@ -262,8 +262,19 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
         except ConvertError as e:
             raise InputError("CONVERT_FAILED", str(e)) from e
     doc = open_doc(src, opts.password, settings.max_pages)
-    n = doc.page_count
     enabled = set(opts.entities)
+    # PDF 结构里的水印对象（水印注释、标记为水印的内容、水印图层）在渲染前直接删掉，不碰像素
+    wm_objects = 0
+    if doc.kind == "pdf" and ({"WATERMARK", "ORG"} & enabled):
+        cleaned = out_dir / "wm-clean.pdf"
+        try:
+            wm_objects = pdfwm.strip_watermarks(src, cleaned, opts.password)
+        except Exception as e:  # 清理失败不影响脱敏，按原文件继续
+            log.warning("PDF 水印对象去除失败，按原文件处理：%s", type(e).__name__)
+        if wm_objects:
+            src = cleaned
+            doc = open_doc(src, opts.password, settings.max_pages)
+    n = doc.page_count
     strict = opts.mode == "strict"
     rng = np.random.default_rng()
 
@@ -424,6 +435,7 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
     progress(0.99, "生成输出文件")
     out_path = _rebuild(doc, pages_dir, out_dir, n)
     shutil.rmtree(out_dir / "convert", ignore_errors=True)
+    (out_dir / "wm-clean.pdf").unlink(missing_ok=True)
     counts = Counter(it["type"] for it in report_items)
     return {
         "pages": n,
@@ -434,6 +446,7 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
         "items": report_items,
         "page_meta": page_meta,
         "verification": {"enabled": opts.verify, "residual_hits": residual_total, "passed": True},
+        "watermark_objects": wm_objects,  # 从 PDF 结构里直接删除的水印对象数
         "options": {
             "entities": sorted(enabled),
             "default_style": opts.default_style,
