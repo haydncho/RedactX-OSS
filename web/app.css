@@ -289,7 +289,7 @@ textarea:focus, input[type=password]:focus, select:focus { outline: none; box-sh
 .summary { background: var(--canvas-soft); border-radius: 8px; box-shadow: var(--ring); padding: 16px; overflow-y: auto; scrollbar-width: thin; }
 .summary h3 { display: flex; align-items: center; gap: 6px; font: 400 11px/16px var(--mono); letter-spacing: .06em; color: var(--mute); margin: 0 0 8px; }
 .total { font-size: 13px; color: var(--body); margin-bottom: 12px; }
-.total .num:first-child { font: 600 32px/40px var(--sans); letter-spacing: -0.04em; color: var(--ink); margin-right: 2px; }
+.total .num:first-child { font: 600 22px/28px var(--sans); letter-spacing: -0.03em; color: var(--ink); margin-right: 2px; }
 .counts, .page-items { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 1px; }
 .counts li { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 5px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
 .counts li:hover { background: var(--canvas); box-shadow: var(--ring); }
