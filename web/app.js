@@ -136,7 +136,10 @@
           row.classList.toggle("off", !ev.target.checked); updateSelToggle(); save();
         } });
         cb.checked = on;
-        const row = el("div", { class: `ent${on ? "" : " off"}` }, cb, el("label", { for: id, text: e.name }), el("div", { class: "style-pick" }, sw, sel));
+        // 水印在识别前整页擦除，打码样式不适用
+        const pick = e.code === "WATERMARK" ? el("div", { class: "style-na", title: "只擦除水印像素，下面的正文保留" }, "直接擦除")
+          : el("div", { class: "style-pick" }, sw, sel);
+        const row = el("div", { class: `ent${on ? "" : " off"}` }, cb, el("label", { for: id, text: e.name }), pick);
         wrap.append(row);
       }
       root.append(wrap);

@@ -132,20 +132,18 @@ class Aliases:
         return f"{ENTITY_BY_CODE[type_]['label']}{self._map[key]}"
 
 
-def _page_text(img: np.ndarray, pd: PageData, repeated: set[str]) -> None:
-    """为页面准备文字：文字层足够就用文字层；扫描页整页 OCR；混合页对大图片区域补 OCR。"""
+def _page_text(work: np.ndarray, pd: PageData, repeated: set[str]) -> None:
+    """为页面准备文字：文字层足够就用文字层；扫描页整页 OCR；混合页对大图片区域补 OCR。
+    work 是已纠正方向、已去除水印的页面图像。"""
     area = float(pd.width * pd.height)
     if pd.text_source == "text":
         for obj in pd.images:
             x0, y0, x1, y1 = obj.rect
             if (x1 - x0) * (y1 - y0) / area >= 0.12 and obj.digest not in repeated:
-                pd.lines.extend(ocr.region_ocr(img, obj.rect))
+                pd.lines.extend(ocr.region_ocr(work, obj.rect))
         return
-    # 旋转页在纠正方向后的画面上识别与打码，输出时再转回原方向
-    pd.rotation = ocr.detect_orientation(img)
-    work = ocr._rotate(img, pd.rotation)
     pd.width, pd.height = work.shape[1], work.shape[0]
-    # 斜向文字行多为院名水印，不参与正文识别（否则按外接矩形打码会盖住下面的正文），另由水印识别处理
+    # 残留的斜向文字行（水印没擦干净的部分）不参与正文识别，否则按外接矩形打码会盖住下面的正文
     pd.lines = [ln for ln in ocr.ocr_page(work, 0) if not _slanted(ln)]
     pd.text_source = "ocr"
 
@@ -168,18 +166,32 @@ def _has_printed_labels(pd: PageData, rect) -> bool:
     return False
 
 
+def _printed_boxes(pd: PageData, rect) -> list:
+    """填写区里已识别的打印字：文字层的字（文字层里没有手写），以及从填写区内起头、成句的 OCR 行。
+    标签所在的那一行不算（OCR 常把标签和紧贴的手写姓名识别成一行）。"""
+    from .detect.anchors import _looks_printed
+
+    out = []
+    for ln in pd.lines:
+        if ln.source == "text" or (ln.chars[0].box[0] >= rect[0] and _looks_printed(ln.text, ln.chars)):
+            out += [c.box for c in ln.chars]
+    return out
+
+
 def _field_ok(work: np.ndarray, pd: PageData, rect) -> bool:
-    return vision.has_ink(work, rect) and not _has_printed_digits(pd, rect) and not _has_printed_labels(pd, rect)
+    return (vision.has_ink(work, rect, exclude=_printed_boxes(pd, rect)) and not _has_printed_digits(pd, rect)
+            and not _has_printed_labels(pd, rect))
 
 
-def _char_boxes_outside(pd: PageData, rect, skip_line: int | None = None) -> list:
-    """区域外已识别文字的字框：扩展签名区域时不得吞进它们。"""
+def _char_boxes_outside(pd: PageData, rect, skip: Hit | None = None) -> list:
+    """区域外已识别文字的字框：扩展签名区域时不得吞进它们。skip 为命中本身（它自己的字不算），
+    同一行里的其他字照样算（OCR 常把签名和右边的“报告日期：……”识别成一行）。"""
     x0, y0, x1, y1 = rect
     out = []
     for li, ln in enumerate(pd.lines):
-        if li == skip_line:
-            continue
-        for c in ln.chars:
+        for ci, c in enumerate(ln.chars):
+            if skip is not None and li == skip.line and skip.start <= ci < skip.end:
+                continue
             cx, cy = (c.box[0] + c.box[2]) / 2, (c.box[1] + c.box[3]) / 2
             if not (x0 <= cx <= x1 and y0 <= cy <= y1):
                 out.append(c.box)
@@ -260,9 +272,21 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
         for obj in pd.images:
             digest_pages.setdefault(obj.digest, set()).add(pd.index)
         repeated_so_far = {d for d, ps in digest_pages.items() if len(ps) >= 2}
-        _page_text(img, pd, repeated_so_far)
-        work = ocr._rotate(img, pd.rotation)
+        # 旋转页在纠正方向后的画面上识别与打码，输出时再转回原方向
+        if pd.text_source != "text":
+            pd.rotation = ocr.detect_orientation(img)
+        work = ocr._rotate(img, pd.rotation).copy()
+        # 先去水印，再识别正文：水印压字会干扰 OCR，也会被误当成笔迹
+        wms: list[vision.Watermark] = []
+        if "WATERMARK" in enabled or "ORG" in enabled:
+            wms = vision.watermarks(work, sorted(org_names), lambda t: any(k == "ORG" for k, _, _ in rules.find(t)),
+                                    all_slanted="WATERMARK" in enabled)
+            for wm in wms:
+                vision.erase_watermark(work, wm.quad)
+        page_wm.append(wms)
+        _page_text(work, pd, repeated_so_far)
         hits, fields = engine.page_hits(pd, enabled, opts.custom_words)
+        org_names.update(h.value for h in hits if h.type == "ORG" and h.value)
         regions: list[Region] = []
         for ftype, label, right_rect, below_rect in fields:
             if ftype not in enabled:
@@ -279,7 +303,7 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
                 rect = below_rect
             if rect:
                 h = max(rect[3] - rect[1], 1)
-                r = vision.ink_bounds(work, rect, pad=0.12 * h)
+                r = vision.ink_bounds(work, rect, pad=0.12 * h, exclude=_printed_boxes(pd, rect))
                 if ftype == "SIGNATURE":
                     r = vision.grow_strokes(work, r, _char_boxes_outside(pd, r))
                 regions.append(Region(ftype, "anchor-field", pd.index, r))
@@ -289,11 +313,6 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
             regions += [Region("QRCODE", "detector", pd.index, r) for r in vision.codes(work, opts.dpi)]
         if "LOGO" in enabled:
             graphics += vision.graphic_candidates(work, pd.lines, pd.index, opts.dpi)
-        wms: list[vision.Watermark] = []
-        if "ORG" in enabled:
-            org_names.update(h.value for h in hits if h.type == "ORG" and h.value)
-            wms = vision.watermarks(work, sorted(org_names), lambda t: any(k == "ORG" for k, _, _ in rules.find(t)))
-        page_wm.append(wms)
         _preview(img, prev_dir / f"before-{pd.index + 1}.jpg")
         pages.append(pd)
         page_hits.append(hits)
@@ -325,7 +344,7 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
             rect = _hits_to_rect(pd, h, strict)
             if rect and h.type in ("PERSON", "STAFF", "SIGNATURE") and pd.lines[h.line].source == "ocr":
                 # 手写姓名、签名：把超出字框的相连笔画一并遮住
-                rect = vision.grow_strokes(img, rect, _char_boxes_outside(pd, rect, skip_line=h.line))
+                rect = vision.grow_strokes(img, rect, _char_boxes_outside(pd, rect, skip=h))
             if rect:
                 regions.append(Region(h.type, h.source, i, rect, aliases.get(h.type, h.value)))
         scanned = any((o.rect[2] - o.rect[0]) * (o.rect[3] - o.rect[1]) >= 0.8 * pd.width * pd.height for o in pd.images)
@@ -344,7 +363,7 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
                 text = r.alias or ENTITY_BY_CODE[r.type]["label"]
             redact.apply(img, r.rect, r.style, text, rng, max_font)
 
-        regions += [Region("ORG", "watermark", i, wm.rect, style="watermark") for wm in page_wm[i]]
+        regions += [Region("ORG" if wm.org else "WATERMARK", "watermark", i, wm.rect, style="watermark") for wm in page_wm[i]]
         residual = 0
         if opts.verify:
             progress(0.62 + 0.36 * (i + 0.5) / n, f"自检第 {i + 1}/{n} 页")

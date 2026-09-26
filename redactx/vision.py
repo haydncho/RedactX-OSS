@@ -82,7 +82,7 @@ def codes(img: np.ndarray, dpi: int = 200) -> list[Rect]:
     return out
 
 
-def _ink_mask(img: np.ndarray, rect: Rect):
+def _ink_mask(img: np.ndarray, rect: Rect, exclude: list[Rect] | None = None):
     """填写区内的笔迹掩码：去掉横线、竖线（下划线和表格线），只留下有一定高度的笔画。"""
     hgt, wid = img.shape[:2]
     x0, y0, x1, y1 = (int(round(v)) for v in rect)
@@ -98,6 +98,12 @@ def _ink_mask(img: np.ndarray, rect: Rect):
     lines = cv2.morphologyEx(ink, cv2.MORPH_OPEN, hk) | cv2.morphologyEx(ink, cv2.MORPH_OPEN, vk)
     lines = cv2.dilate(lines, np.ones((3, 3), np.uint8))
     ink = ink & (1 - lines)
+    # 已识别的打印字不算填写笔迹（如签名栏右侧“与患者关系”的“与”）
+    for ex0, ey0, ex1, ey1 in exclude or ():
+        a, b = int(max(ex0 - x0 - 1, 0)), int(max(ey0 - y0 - 1, 0))
+        c, d = int(min(ex1 - x0 + 1, x1 - x0)), int(min(ey1 - y0 + 1, y1 - y0))
+        if c > a and d > b:
+            ink[b:d, a:c] = 0
     # 只保留高度达到区域高度 18% 以上的连通笔画，过滤噪点、虚线和下划线残段
     n, lab, stats, _ = cv2.connectedComponentsWithStats(ink, connectivity=8)
     keep = np.zeros_like(ink)
@@ -107,14 +113,14 @@ def _ink_mask(img: np.ndarray, rect: Rect):
     return keep, (x0, y0)
 
 
-def has_ink(img: np.ndarray, rect: Rect, min_ratio: float = 0.01) -> bool:
-    mask, _ = _ink_mask(img, rect)
+def has_ink(img: np.ndarray, rect: Rect, min_ratio: float = 0.01, exclude: list[Rect] | None = None) -> bool:
+    mask, _ = _ink_mask(img, rect, exclude)
     return mask is not None and mask.mean() >= min_ratio
 
 
-def ink_bounds(img: np.ndarray, rect: Rect, pad: float) -> Rect:
+def ink_bounds(img: np.ndarray, rect: Rect, pad: float, exclude: list[Rect] | None = None) -> Rect:
     """把填写区收紧到实际笔迹范围，避免大面积遮盖空白。"""
-    mask, (x0, y0) = _ink_mask(img, rect)
+    mask, (x0, y0) = _ink_mask(img, rect, exclude)
     if mask is None:
         return rect
     ys, xs = np.nonzero(mask)
@@ -218,6 +224,7 @@ class Watermark:
     quad: np.ndarray  # 4×2，文字行四边形（页面像素坐标）
     rect: Rect
     text: str  # 只在任务内存中使用，不写入报告与日志
+    org: bool = True  # 内容是机构名称
 
 
 def _paper(gray: np.ndarray) -> float:
@@ -236,8 +243,9 @@ def light_layer(img: np.ndarray) -> np.ndarray:
     return keep[lab]
 
 
-def watermarks(img: np.ndarray, names: list[str], is_org) -> list[Watermark]:
-    """在浅色层上单独做 OCR，找出院名水印。is_org(text) 判断文字是否含机构名称；names 为文档里已识别的机构名。"""
+def watermarks(img: np.ndarray, names: list[str], is_org, all_slanted: bool = False) -> list[Watermark]:
+    """在浅色层上单独做 OCR 找水印。院名水印（is_org(text) 或与 names 里已识别的机构名相近）不论方向都算；
+    all_slanted 时，倾斜的浅色文字行（至少 4 个字）不论内容都算水印。"""
     from rapidfuzz import fuzz
 
     from . import ocr
@@ -255,10 +263,13 @@ def watermarks(img: np.ndarray, names: list[str], is_org) -> list[Watermark]:
         t = (t or "").replace(" ", "")
         if len(t) < 4 or (scores and scores[i] < 0.5) or boxes is None:
             continue
-        if not (is_org(t) or any(len(n) >= 4 and fuzz.partial_ratio(n, t) >= 80 for n in names)):
-            continue
         q = np.asarray(boxes[i], dtype=np.float32)
-        out.append(Watermark(q, (float(q[:, 0].min()), float(q[:, 1].min()), float(q[:, 0].max()), float(q[:, 1].max())), t))
+        org = is_org(t) or any(len(n) >= 4 and fuzz.partial_ratio(n, t) >= 80 for n in names)
+        a = abs(float(np.degrees(np.arctan2(q[1][1] - q[0][1], q[1][0] - q[0][0])))) % 180
+        slanted = SLANT_MIN <= a <= 90 - SLANT_MIN or 90 + SLANT_MIN <= a <= 180 - SLANT_MIN
+        if not (org or (all_slanted and slanted)):
+            continue
+        out.append(Watermark(q, (float(q[:, 0].min()), float(q[:, 1].min()), float(q[:, 0].max()), float(q[:, 1].max())), t, org))
     return out
 
 
@@ -320,15 +331,29 @@ def grow_strokes(img: np.ndarray, rect: Rect, avoid: list[Rect]) -> Rect:
     rx0, ry0, rx1, ry1 = int(x0) - wx0, int(y0) - wy0, int(x1) - wx0, int(y1) - wy0
     inside = set(np.unique(lab[max(ry0, 0) : max(ry1, 0), max(rx0, 0) : max(rx1, 0)]).tolist()) - {0}
     out = [x0, y0, x1, y1]
+
+    def box(i):
+        cx, cy, cw, chh, _ = stats[i]
+        return (cx + wx0, cy + wy0, cx + cw + wx0, cy + chh + wy0)
+
+    def is_text(b):  # 这一笔主要落在别的已识别文字的字框里，或盖住了某个字框的大部分（日期、标签）
+        return any(_inter(b, a) > 0.5 * max((b[2] - b[0]) * (b[3] - b[1]), 1) or _inter(b, a) > 0.3 * max((a[2] - a[0]) * (a[3] - a[1]), 1)
+                   for a in avoid)
+
     for i in inside:
-        cx, cy, cw, chh, area = stats[i]
-        if area < 12:
+        b = box(i)
+        if stats[i][4] < 12 or (b[0] >= x0 and b[1] >= y0 and b[2] <= x1 and b[3] <= y1) or is_text(b):
             continue
-        b = (cx + wx0, cy + wy0, cx + cw + wx0, cy + chh + wy0)
-        if (b[0] >= x0 and b[1] >= y0 and b[2] <= x1 and b[3] <= y1):
-            continue
-        # 伸出区域的这一笔如果有一半以上落在别的已识别文字的字框里（日期、标签），不纳入
-        if any(_inter(b, a) > 0.5 * max((b[2] - b[0]) * (b[3] - b[1]), 1) for a in avoid):
+        out = [min(out[0], b[0] - 2), min(out[1], b[1] - 2), max(out[2], b[2] + 2), max(out[3], b[3] + 2)]
+    # 签名右侧不相连的零散笔画（收笔拖尾、分开写的字）：中心落在原区域中间 60% 高度内、间隔不超过 2.5 个字高的逐段纳入
+    rest = sorted((i for i in range(1, n) if i not in inside and stats[i][4] >= 12), key=lambda i: stats[i][0])
+    band0, band1 = y0 + 0.2 * (y1 - y0), y1 - 0.2 * (y1 - y0)
+    # 到同一行右边下一个已识别文字（如“报告日期”）为止，不越过
+    stop = min((a[0] for a in avoid if a[0] >= x1 and band0 <= (a[1] + a[3]) / 2 <= band1), default=float("inf"))
+    for i in rest:
+        b = box(i)
+        cyb = (b[1] + b[3]) / 2
+        if b[0] < out[2] - 2 or b[0] - out[2] > 2.5 * h or b[2] > stop or not (band0 <= cyb <= band1) or is_text(b):
             continue
         out = [min(out[0], b[0] - 2), min(out[1], b[1] - 2), max(out[2], b[2] + 2), max(out[3], b[3] + 2)]
     return tuple(float(v) for v in out)

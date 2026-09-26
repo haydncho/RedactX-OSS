@@ -29,6 +29,8 @@ ENTITIES = [
     {"code": "SEAL", "name": "印章", "label": "印章", "group": "handwriting", "default": True, "default_style": "background"},
     {"code": "LOGO", "name": "医院 Logo 等标识图片", "label": "标识", "group": "images", "default": True, "default_style": "background"},
     {"code": "QRCODE", "name": "二维码与条码", "label": "条码", "group": "images", "default": True, "default_style": "mosaic"},
+    # 水印在识别前整页去除：只擦水印像素，不遮下面的正文，打码样式不适用
+    {"code": "WATERMARK", "name": "水印（先整页去除）", "label": "水印", "group": "images", "default": True, "default_style": "background"},
     {"code": "CUSTOM", "name": "自定义词", "label": "已删除", "group": "people", "default": True, "default_style": "label"},
 ]
 

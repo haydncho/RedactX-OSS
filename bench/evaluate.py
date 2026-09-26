@@ -22,7 +22,7 @@ NAMES = {
     "PERSON": "患者与联系人姓名", "PERSON_PROSE": "正文人名（仅正文出现）", "STAFF": "医护人员姓名", "ORG": "机构名称",
     "ADDRESS": "地址", "ID_CARD": "身份证号", "PHONE": "电话", "MEDICAL_ID": "医疗标识号", "SIGNATURE": "签名",
     "SEAL": "印章", "LOGO": "Logo", "QRCODE": "二维码", "DATE": "日期", "DIAGNOSIS": "诊断与编码", "LAB_RESULT": "检验结果",
-    "SEX": "性别", "AGE": "年龄", "FEE": "费用", "PHOTO": "临床照片",
+    "SEX": "性别", "AGE": "年龄", "FEE": "费用", "PHOTO": "临床照片", "WATERMARK": "水印（非院名）",
 }
 FORMS = {"print": "印刷", "hand": "手写", "image": "图片", "seal": "印章", "faint": "淡色印章", "watermark": "水印"}
 
