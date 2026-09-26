@@ -1,5 +1,5 @@
 # 锐消 RedactX 服务镜像（Apple container / OCI 通用）
-# 构建：container build -t redactx:0.1.1 -f deploy/container/Containerfile .
+# 构建：container build -t redactx:0.1.2 -f deploy/container/Containerfile .
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

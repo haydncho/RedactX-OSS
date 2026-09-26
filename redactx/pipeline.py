@@ -148,6 +148,15 @@ def _page_text(work: np.ndarray, pd: PageData, repeated: set[str]) -> None:
     pd.text_source = "ocr"
 
 
+def _distinct(profiles):
+    """合并角度与颜色都相近的水印特征。"""
+    out = []
+    for ang, color, org in profiles:
+        if not any(abs(ang - a) < 5 and np.linalg.norm(color - c) < 20 for a, c, _ in out):
+            out.append((ang, color, org))
+    return out
+
+
 def _slanted(ln) -> bool:
     a = abs(ln.angle) % 180
     return vision.SLANT_MIN <= a <= 90 - vision.SLANT_MIN or 90 + vision.SLANT_MIN <= a <= 180 - vision.SLANT_MIN
@@ -266,6 +275,8 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
     graphics: list[vision.Graphic] = []
     page_wm: list[list[vision.Watermark]] = []
     org_names: set[str] = set()
+    wm_angles: list[float] = []  # 本文档已确认的水印角度，供后面的页转正识别
+    wm_profiles: list[tuple[float, np.ndarray, bool]] = []  # 已确认水印的 (角度, 颜色, 是否院名)，用于整页按带擦除
 
     progress(0.01, "解析文件")
     for img, pd in iter_pages(src, doc.kind, opts.dpi, opts.password):
@@ -280,9 +291,15 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
         wms: list[vision.Watermark] = []
         if "WATERMARK" in enabled or "ORG" in enabled:
             wms = vision.watermarks(work, sorted(org_names), lambda t: any(k == "ORG" for k, _, _ in rules.find(t)),
-                                    all_slanted="WATERMARK" in enabled)
+                                    all_slanted="WATERMARK" in enabled, angle_hints=wm_angles)
+            wm_angles += [vision._line_angle(wm.quad) for wm in wms if vision._is_slanted(vision._line_angle(wm.quad))]
             for wm in wms:
-                vision.erase_watermark(work, wm.quad)
+                color = vision.erase_watermark(work, wm.quad)
+                if color is not None and vision._is_slanted(vision._line_angle(wm.quad)):
+                    wm_profiles.append((vision._line_angle(wm.quad), color, wm.org))
+            # 同一文档的水印颜色、角度一致：按已确认的水印整页擦除同色成带的其余水印（认不出字的也擦）
+            for ang, color, _org in wm_profiles[-2:]:
+                vision.erase_watermark_bands(work, ang, color)
         page_wm.append(wms)
         _page_text(work, pd, repeated_so_far)
         hits, fields = engine.page_hits(pd, enabled, opts.custom_words)
@@ -352,9 +369,14 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
             kind = vision.classify_image(obj, pd.width, pd.height, obj.digest in repeated, opts.dpi)
             if kind and kind in enabled:
                 regions.append(Region(kind, "image-object", i, obj.rect))
-        # 先消除水印（只擦水印像素），再按样式打码
+        # 先消除水印（只擦水印像素），再按样式打码；再按全文档确认的水印颜色、角度整页擦除成带的其余水印
         for wm in page_wm[i]:
             vision.erase_watermark(img, wm.quad)
+        band_regions = []
+        for ang, color, org in _distinct(wm_profiles):
+            r = vision.erase_watermark_bands(img, ang, color)
+            if r:
+                band_regions.append(Region("ORG" if org else "WATERMARK", "watermark", i, r, style="watermark"))
         regions = _merge(regions)
         for r in regions:
             r.style = opts.style_for(r.type)
@@ -363,7 +385,7 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
                 text = r.alias or ENTITY_BY_CODE[r.type]["label"]
             redact.apply(img, r.rect, r.style, text, rng, max_font)
 
-        regions += [Region("ORG" if wm.org else "WATERMARK", "watermark", i, wm.rect, style="watermark") for wm in page_wm[i]]
+        regions += [Region("ORG" if wm.org else "WATERMARK", "watermark", i, wm.rect, style="watermark") for wm in page_wm[i]] + band_regions
         residual = 0
         if opts.verify:
             progress(0.62 + 0.36 * (i + 0.5) / n, f"自检第 {i + 1}/{n} 页")

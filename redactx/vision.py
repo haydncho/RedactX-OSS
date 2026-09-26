@@ -18,7 +18,10 @@ def red_seals(img: np.ndarray, dpi: int) -> list[Rect]:
     # 淡粉色印章的红色优势也不大（约 30），但偏品红（B ≥ G），据此区分
     rgb = img.astype(np.int16)
     dominance = rgb[..., 0] - np.maximum(rgb[..., 1], rgb[..., 2])
-    reddish = (dominance >= 35) | ((dominance >= 22) & (rgb[..., 2] >= rgb[..., 1]))
+    # 褪色的淡红名章（约 220,196,191）红色优势只有 20 出头且偏橙，但很亮；墨迹边缘暗（亮度 90–110），据亮度区分。
+    # 高饱和的品红 / 紫色也算（紫色印章）
+    reddish = (dominance >= 35) | ((dominance >= 22) & (rgb[..., 2] >= rgb[..., 1])) | ((dominance >= 18) & (v >= 150)) \
+        | ((h >= 155) & (s >= 80) & (v >= 110))
     red = (((h <= 10) | (h >= 155)) & (s >= 25) & (v >= 90) & reddish).astype(np.uint8) * 255
     k = max(3, int(dpi / 40))
     closed = cv2.morphologyEx(red, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k * 3, k * 3)))
@@ -243,38 +246,142 @@ def light_layer(img: np.ndarray) -> np.ndarray:
     return keep[lab]
 
 
-def watermarks(img: np.ndarray, names: list[str], is_org, all_slanted: bool = False) -> list[Watermark]:
-    """在浅色层上单独做 OCR 找水印。院名水印（is_org(text) 或与 names 里已识别的机构名相近）不论方向都算；
-    all_slanted 时，倾斜的浅色文字行（至少 4 个字）不论内容都算水印。"""
-    from rapidfuzz import fuzz
-
+def _ocr_lines(img_rgb: np.ndarray):
     from . import ocr
+
+    res = ocr.engine()(img_rgb, use_det=True, use_cls=True, use_rec=True)
+    boxes = getattr(res, "boxes", None)
+    if boxes is None:
+        return []
+    scores = getattr(res, "scores", None) or [1.0] * len(boxes)
+    return [((t or "").replace(" ", ""), np.asarray(q, dtype=np.float32), float(s)) for t, q, s in zip(res.txts or (), boxes, scores)]
+
+
+def _line_angle(q: np.ndarray) -> float:
+    """文字行方向（度，图像坐标 y 向下，顺时针为正）。"""
+    return float(np.degrees(np.arctan2(q[1][1] - q[0][1], q[1][0] - q[0][0])))
+
+
+def _reddish_strokes(img: np.ndarray, light: np.ndarray, q: np.ndarray) -> bool:
+    """四边形内浅色笔画偏红：是印章环形文字（章上常刻院名），不是水印，交给印章检测。"""
+    m = np.zeros(light.shape, np.uint8)
+    cv2.fillPoly(m, [np.round(q).astype(np.int32)], 1)
+    px = img[(m > 0) & light].astype(np.int16)
+    if len(px) < 20:
+        return False
+    med = np.median(px, axis=0)
+    return bool(med[0] - max(med[1], med[2]) >= 18)
+
+
+def _qrect(q: np.ndarray) -> Rect:
+    return (float(q[:, 0].min()), float(q[:, 1].min()), float(q[:, 0].max()), float(q[:, 1].max()))
+
+
+def _extend_to(q: np.ndarray, part: str, full: str) -> np.ndarray:
+    """已识别出院名中的一段 part：沿文字方向按单字宽度把四边形延伸到完整院名 full 的范围。"""
+    q0, q1, q3 = q[0], q[1], q[3]
+    length = float(np.linalg.norm(q1 - q0))
+    if length < 1:
+        return q
+    u = (q1 - q0) / length
+    cw = length / len(part)
+    start = q0 - u * cw * (full.find(part) + 0.5)  # 前后各多留半个字
+    end = start + u * cw * (len(full) + 1)
+    v = q3 - q0
+    return np.array([start, end, end + v, start + v], dtype=np.float32)
+
+
+def _is_slanted(angle: float) -> bool:
+    a = abs(angle) % 180
+    return SLANT_MIN <= a <= 90 - SLANT_MIN or 90 + SLANT_MIN <= a <= 180 - SLANT_MIN
+
+
+def watermarks(img: np.ndarray, names: list[str], is_org, all_slanted: bool = False,
+               angle_hints: list[float] | None = None) -> list[Watermark]:
+    """在浅色层上单独做 OCR 找水印。院名水印（is_org(text) 或与 names 里已识别的机构名相近）不论方向都算；
+    all_slanted 时，倾斜的浅色文字行（至少 4 个字）不论内容都算水印。
+
+    斜着的大字直接识别常常只认出一两个字：第一遍找不到时，把浅色层按候选角度转正再识别
+    （候选依次为本页认出的斜向碎片角度、angle_hints 里本文档已确认的水印角度、±30°、±45°）。"""
+    from rapidfuzz import fuzz
 
     light = light_layer(img)
     if light.mean() < 0.001:
         return []
-    layer = np.where(light, 70, 255).astype(np.uint8)
-    res = ocr.engine()(cv2.cvtColor(layer, cv2.COLOR_GRAY2RGB), use_det=True, use_cls=True, use_rec=True)
-    txts = getattr(res, "txts", None) or ()
-    boxes = getattr(res, "boxes", None)
-    scores = getattr(res, "scores", None) or ()
-    out: list[Watermark] = []
-    for i, t in enumerate(txts):
-        t = (t or "").replace(" ", "")
-        if len(t) < 4 or (scores and scores[i] < 0.5) or boxes is None:
+    layer = cv2.cvtColor(np.where(light, 70, 255).astype(np.uint8), cv2.COLOR_GRAY2RGB)
+
+    def reddish(q) -> bool:
+        return _reddish_strokes(img, light, q)
+
+    def accept(lines, slanted_by_construction: bool = False) -> list[Watermark]:
+        out = []
+        for t, q, s in lines:
+            if s < 0.5 or len(t) < 2 or reddish(q):
+                continue
+            slanted = slanted_by_construction or _is_slanted(_line_angle(q))
+            if len(t) < 4:
+                # 压在正文上的水印常被切碎，只认出两三个字：斜向且是本文档已知院名中的一段，就按院名长度补全范围
+                full = next((n for n in names if len(n) >= 4 and t in n), None) if slanted else None
+                if full:
+                    q = _extend_to(q, t, full)
+                    out.append(Watermark(q, _qrect(q), full, True))
+                continue
+            org = is_org(t) or any(len(n) >= 4 and fuzz.partial_ratio(n, t) >= 80 for n in names)
+            if not (org or (all_slanted and slanted)):
+                continue
+            out.append(Watermark(q, _qrect(q), t, org))
+        return out
+
+    first = _ocr_lines(layer)
+    found = accept(first)
+    if found or light.mean() < 0.003:
+        return found
+    # 只在本页已有斜向碎片、或本文档前面已确认水印角度时才转正再识别（不盲试角度，避免拖慢普通页面）
+    frags = [_line_angle(q) for t, q, s in first if len(t) >= 2 and _is_slanted(_line_angle(q))]
+    tried: list[float] = []
+    for ang in frags + list(angle_hints or []):
+        if any(abs(ang - t) < 5 for t in tried):
             continue
-        q = np.asarray(boxes[i], dtype=np.float32)
-        org = is_org(t) or any(len(n) >= 4 and fuzz.partial_ratio(n, t) >= 80 for n in names)
-        a = abs(float(np.degrees(np.arctan2(q[1][1] - q[0][1], q[1][0] - q[0][0])))) % 180
-        slanted = SLANT_MIN <= a <= 90 - SLANT_MIN or 90 + SLANT_MIN <= a <= 180 - SLANT_MIN
-        if not (org or (all_slanted and slanted)):
-            continue
-        out.append(Watermark(q, (float(q[:, 0].min()), float(q[:, 1].min()), float(q[:, 0].max()), float(q[:, 1].max())), t, org))
-    return out
+        tried.append(ang)
+        # 旋转（扩大画布，不裁掉四角）使这个角度的文字变水平
+        h, w = layer.shape[:2]
+        M = cv2.getRotationMatrix2D((w / 2, h / 2), ang, 1.0)
+        cos, sin = abs(M[0, 0]), abs(M[0, 1])
+        nw, nh = int(h * sin + w * cos), int(h * cos + w * sin)
+        M[0, 2] += nw / 2 - w / 2
+        M[1, 2] += nh / 2 - h / 2
+        rot = cv2.warpAffine(layer, M, (nw, nh), borderValue=(255, 255, 255))
+        inv = cv2.invertAffineTransform(M)
+        back = [(t, cv2.transform(q.reshape(-1, 1, 2), inv).reshape(-1, 2), s) for t, q, s in _ocr_lines(rot)
+                if abs(_line_angle(q)) < SLANT_MIN]
+        found = accept(back, slanted_by_construction=True)
+        if found:
+            return found
+    return []
 
 
-def erase_watermark(img: np.ndarray, quad: np.ndarray) -> None:
-    """在水印四边形内，只把颜色落在“纸色—水印色”连线附近的像素抹成背景；深色正文、照片、印章不动。"""
+def _erase_toward(crop: np.ndarray, region: np.ndarray, paper: np.ndarray, paper_g: float, wm: np.ndarray) -> int:
+    """region 内颜色落在“纸色—水印色”连线附近的像素填成纸色，返回擦除的像素数。
+    灰色水印与黑字边缘的抗锯齿像素颜色相同，靠颜色分不开：深色笔画及其周边 2 像素一律不动。"""
+    px = crop.astype(np.float32)
+    gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY).astype(np.float32)
+    d = paper - wm
+    dd = float(d @ d)
+    if dd < 100:
+        return 0
+    diff = paper - px  # 每个像素相对纸色的偏移
+    t = (diff @ d) / dd  # 在“纸色 → 水印色”方向上的位置
+    resid = np.linalg.norm(diff - t[..., None] * d, axis=-1)
+    near_dark = cv2.dilate((gray < paper_g - 110).astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
+    sel = region & (t > 0.12) & (t < 1.6) & (resid < 24) & ~near_dark
+    # 直接填纸色；图像修复会把旁边的黑字“涂”进来，反而把正文抹糊
+    crop[sel] = np.clip(paper, 0, 255).astype(np.uint8)
+    return int(sel.sum())
+
+
+def erase_watermark(img: np.ndarray, quad: np.ndarray) -> np.ndarray | None:
+    """在水印四边形内，只把颜色落在“纸色—水印色”连线附近的像素抹成背景；深色正文、照片、印章不动。
+    返回估计出的水印颜色（供整页按带擦除同一水印），估计不出时返回 None。"""
     h = float(np.linalg.norm(quad[3] - quad[0]))
     pad = max(3, int(0.25 * h))
     x0, y0 = (int(max(v - pad, 0)) for v in quad.min(axis=0))
@@ -291,21 +398,62 @@ def erase_watermark(img: np.ndarray, quad: np.ndarray) -> None:
     paper = np.median(px[poly & (gray >= paper_g - 6)], axis=0) if (poly & (gray >= paper_g - 6)).any() else np.array([255, 255, 255], np.float32)
     wm_px = poly & (gray < paper_g - 22) & (gray > paper_g - 110)
     if wm_px.sum() < 20:
-        return
+        return None
     wm = np.median(px[wm_px], axis=0)
-    d = paper - wm
-    dd = float(d @ d)
-    if dd < 100:
-        return
-    diff = paper - px  # 每个像素相对纸色的偏移
-    t = (diff @ d) / dd  # 在“纸色 → 水印色”方向上的位置
-    resid = np.linalg.norm(diff - t[..., None] * d, axis=-1)
-    # 灰色水印与黑字边缘的抗锯齿像素颜色相同，靠颜色分不开：深色笔画及其周边 2 像素一律不动
-    near_dark = cv2.dilate((gray < paper_g - 110).astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
-    sel = poly & (t > 0.12) & (t < 1.6) & (resid < 24) & ~near_dark
-    if sel.any():
-        # 直接填纸色；图像修复会把旁边的黑字“涂”进来，反而把正文抹糊
-        crop[sel] = np.clip(paper, 0, 255).astype(np.uint8)
+    _erase_toward(crop, poly, paper, paper_g, wm)
+    return wm
+
+
+BAND_PX = 20  # 按带统计水印像素时的带宽（像素）
+
+
+def _band_proj(shape, angle: float) -> np.ndarray:
+    """每个像素在“垂直于文字方向”的轴上的投影坐标：同一行水印落在同一段投影区间里。"""
+    a = np.radians(angle)
+    ys, xs = np.mgrid[0 : shape[0], 0 : shape[1]]
+    return xs * -np.sin(a) + ys * np.cos(a)
+
+
+def _band_hist(mask: np.ndarray, angle: float) -> np.ndarray:
+    proj = _band_proj(mask.shape, angle)[mask]
+    return np.bincount(((proj - proj.min()) // BAND_PX).astype(int)) if len(proj) else np.zeros(1, int)
+
+
+def _effective_bands(mask: np.ndarray, angle: float) -> float:
+    """mask 里的像素沿 angle 方向实际分布在多少条带上（(Σh)²/Σh²），越小越集中。"""
+    h = _band_hist(mask, angle).astype(np.float64)
+    return float(h.sum() ** 2 / max((h ** 2).sum(), 1.0))
+
+
+def erase_watermark_bands(img: np.ndarray, angle: float, wm: np.ndarray) -> Rect | None:
+    """整页去除与已确认水印同色、同角度的其余水印（包括一个字都没认出来的）。
+    与水印同色的浅色像素只在水印角度上集中成带（有效带数不到水平、竖直等方向的 0.6 倍）时才擦，
+    只擦像素数达到最高带 1/4 以上的带；横排的灰色内容（表格线、浅灰印刷字）在水平方向更集中，不会被擦。
+    返回擦除范围，没有水印带时返回 None。"""
+    light = light_layer(img)
+    near = light & (np.linalg.norm(img.astype(np.float32) - wm, axis=-1) < 30)
+    if near.sum() < 800:
+        return None
+    # 水印只在自己的角度上成带；一行行横排的灰色内容在水平方向更集中，不是水印
+    if _effective_bands(near, angle) > 0.6 * min(_effective_bands(near, a) for a in (0.0, 90.0, angle + 90.0)):
+        return None
+    proj = _band_proj(img.shape[:2], angle)
+    lo = float(proj.min())
+    hist = np.bincount(((proj[near] - lo) // BAND_PX).astype(int))
+    strong = np.flatnonzero((hist >= 150) & (hist >= 0.25 * hist.max()))
+    if not len(strong):
+        return None
+    keep = np.zeros(len(hist) + 2, bool)
+    for b in strong:  # 带两侧各放宽一格，容纳字的上下边缘
+        keep[max(b - 1, 0) : b + 2] = True
+    region = keep[np.clip(((proj - lo) // BAND_PX).astype(int), 0, len(keep) - 1)]
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY).astype(np.float32)
+    paper_g = _paper(gray)
+    paper = np.median(img[gray >= paper_g - 6].reshape(-1, 3), axis=0).astype(np.float32)
+    if not _erase_toward(img, region, paper, paper_g, wm):
+        return None
+    ys, xs = np.nonzero(region & near)
+    return (float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max())) if len(xs) else None
 
 
 def grow_strokes(img: np.ndarray, rect: Rect, avoid: list[Rect]) -> Rect:

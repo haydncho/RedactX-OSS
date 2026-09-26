@@ -434,6 +434,7 @@
     $("#zoom-out").onclick = () => stepZoom(-1);
     $("#zoom-level").onclick = () => setZoom(1);
     $("#zoom-fit").onclick = () => setZoom(1);
+    initPan();
     // 鼠标 ⌘/Ctrl + 滚轮；Chrome、Firefox 的触控板捏合也以 ctrlKey 滚轮事件送达。普通滚轮保持平移
     v.addEventListener("wheel", (e) => {
       if (!(e.ctrlKey || e.metaKey)) return;
@@ -450,6 +451,54 @@
     new ResizeObserver(() => setZoom(zoom)).observe(v);
   }
 
+  // ---------- 手形拖动：工具条按钮或 H 切换，按住空格临时启用，鼠标中键随时可拖 ----------
+  let panOn = false, spaceHeld = false, dragged = false;
+  function setPan(on) {
+    panOn = on;
+    $("#pan-tool").setAttribute("aria-pressed", String(on));
+    syncPanClass();
+  }
+  const syncPanClass = () => $("#viewer").classList.toggle("pan", panOn || spaceHeld);
+  function initPan() {
+    const v = $("#viewer");
+    $("#pan-tool").onclick = () => setPan(!panOn);
+    let start = null;
+    v.addEventListener("pointerdown", (e) => {
+      const middle = e.button === 1;
+      if (!(middle || (e.button === 0 && (panOn || spaceHeld)))) return;
+      e.preventDefault();
+      start = { x: e.clientX, y: e.clientY, sl: v.scrollLeft, st: v.scrollTop, id: e.pointerId };
+      dragged = false;
+      v.setPointerCapture(e.pointerId);
+      v.classList.add("panning");
+    });
+    v.addEventListener("pointermove", (e) => {
+      if (!start || e.pointerId !== start.id) return;
+      const dx = e.clientX - start.x, dy = e.clientY - start.y;
+      if (Math.abs(dx) + Math.abs(dy) > 3) dragged = true;
+      v.scrollLeft = start.sl - dx;
+      v.scrollTop = start.st - dy;
+    });
+    const end = (e) => {
+      if (!start || e.pointerId !== start.id) return;
+      start = null;
+      v.classList.remove("panning");
+    };
+    v.addEventListener("pointerup", end);
+    v.addEventListener("pointercancel", end);
+    v.addEventListener("auxclick", (e) => { if (e.button === 1) e.preventDefault(); });
+    const typing = () => /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName);
+    window.addEventListener("keydown", (e) => {
+      if (!report || $("#result").hidden || typing() || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.code === "Space") { e.preventDefault(); if (!spaceHeld) { spaceHeld = true; syncPanClass(); } }
+      if (e.key === "h" || e.key === "H") setPan(!panOn);
+    });
+    window.addEventListener("keyup", (e) => { if (e.code === "Space") { spaceHeld = false; syncPanClass(); } });
+    window.addEventListener("blur", () => { spaceHeld = false; syncPanClass(); });
+  }
+  // 拖动画布时不把松手当成点击（否则会移动对比分隔线）
+  const panClick = () => panOn || spaceHeld || dragged;
+
   function initHandle() {
     const stage = $("#stage"), handle = $("#handle"), clip = $("#before-clip");
     let pct = 50;
@@ -463,7 +512,7 @@
     handle.addEventListener("pointerdown", (e) => { handle.setPointerCapture(e.pointerId); fromEvent(e); });
     handle.addEventListener("pointermove", (e) => { if (handle.hasPointerCapture(e.pointerId)) fromEvent(e); });
     handle.addEventListener("keydown", (e) => { if (e.key === "ArrowLeft") setPct(pct - 5); if (e.key === "ArrowRight") setPct(pct + 5); });
-    stage.addEventListener("click", (e) => { if (state.view === "compare" && e.target !== handle) fromEvent(e); });
+    stage.addEventListener("click", (e) => { if (panClick()) { dragged = false; return; } if (state.view === "compare" && e.target !== handle) fromEvent(e); });
     setPct(50);
   }
 

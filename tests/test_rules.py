@@ -150,3 +150,26 @@ def test_far_printed_text_is_not_the_name():
     hits, fields = anchor(PageData(0, 1000, 1000, lines=[ln]), {"PERSON"})
     assert hits == []
     assert len(fields) == 1 and fields[0][2][2] < ln.chars[2].box[0]  # 填写区止于打印文字之前
+
+
+def test_far_short_name_is_kept():
+    # 签名栏与姓名隔得远、姓不在常见姓氏表里：独立的两个字仍是姓名（否则整份文档的全文追踪都会丢）
+    ln = _line("上级医师 乜翀", gaps={5: 60})
+    hits, _ = anchor(PageData(0, 1000, 1000, lines=[ln]), {"STAFF"})
+    assert [ln.text[h.start:h.end] for h in hits] == ["乜翀"]
+
+
+def test_very_far_word_is_not_the_name():
+    # 离签名栏十几个字高的独立短词属于别的字段，不能当成姓名种子
+    ln = _line("麻醉医师签名 护理", gaps={7: 150})
+    hits, _ = anchor(PageData(0, 1000, 1000, lines=[ln]), {"STAFF", "SIGNATURE"})
+    assert hits == []
+
+
+def test_role_word_plus_doctor_with_colon():
+    # “谈话医生：”：词表里没有“谈话医生”，“医生”前面紧挨着“话”，带冒号时仍是医护标签
+    page = PageData(0, 1000, 1000, lines=[_ocr_line("谈话医生：")])
+    _, fields = anchor(page, {"STAFF"})
+    assert [f[1] for f in fields] == ["医生"]
+    # 正文里的“医生”（无冒号）不受影响
+    assert anchor(PageData(0, 1000, 1000, lines=[_ocr_line("由谈话医生告知病情")]), {"STAFF"}) == ([], [])

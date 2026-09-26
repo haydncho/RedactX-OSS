@@ -99,3 +99,48 @@ def test_grow_strokes_takes_signature_tail_but_not_neighbours():
     assert x1 >= 555  # 拖尾整体纳入
     assert x1 < 600  # 不吞红章
     assert y0 > 160  # 不吞上一行日期
+
+
+def test_faded_name_stamp_detected():
+    # 褪色的淡红名章：红色优势约 25、偏橙，但很亮
+    img = np.full((600, 600, 3), 245, np.uint8)
+    cv2.rectangle(img, (200, 200), (300, 290), (222, 197, 190), 6)
+    cv2.putText(img, "AB", (215, 265), cv2.FONT_HERSHEY_SIMPLEX, 1.4, (222, 197, 190), 5)
+    assert len(vision.red_seals(img, DPI)) == 1
+
+
+def _band_page(angle_deg):
+    img = np.full((1400, 1000, 3), 250, np.uint8)
+    for k in range(30):  # 一行行横排的深色正文
+        cv2.putText(img, "record text line", (60, 60 + k * 44), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (30, 30, 30), 2)
+    return img
+
+
+def test_watermark_bands_only_at_watermark_angle():
+    wm = np.array([184, 181, 186], np.float32)
+    # 斜向的浅灰水印：沿 -44° 成带，应被擦除
+    img = _band_page(-44)
+    tile = np.full((120, 900, 3), 255, np.uint8)
+    cv2.putText(tile, "WATERMARK NAME", (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 2.4, (184, 181, 186), 9)
+    M = cv2.getRotationMatrix2D((450, 60), 44, 1.0)
+    rot = cv2.warpAffine(tile, M, (900, 900), borderValue=(255, 255, 255))
+    region = img[250:1150, 50:950]
+    np.copyto(region, np.minimum(region, rot))
+    before = (np.abs(img.astype(int) - wm).sum(-1) < 40).sum()
+    assert vision.erase_watermark_bands(img, -44.0, wm) is not None
+    after = (np.abs(img.astype(int) - wm).sum(-1) < 40).sum()
+    assert after < 0.5 * before
+    # 横排的浅灰正文（不斜）：不在 -44° 成带，不擦
+    img2 = np.full((1400, 1000, 3), 250, np.uint8)
+    for k in range(30):
+        cv2.putText(img2, "light gray printed row", (60, 60 + k * 44), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (184, 181, 186), 3)
+    assert vision.erase_watermark_bands(img2, -44.0, wm) is None
+
+
+def test_seal_ring_text_is_not_a_watermark():
+    # 淡红印章的环形文字（刻着院名、斜排）不是水印；同样位置的灰色斜字才是
+    quad = np.array([[200, 300], [700, 100], [720, 150], [220, 350]], np.float32)
+    for color, want in [((236, 150, 160), True), ((184, 181, 186), False)]:
+        img = np.full((600, 900, 3), 250, np.uint8)
+        cv2.putText(img, "HOSPITAL", (230, 330), cv2.FONT_HERSHEY_SIMPLEX, 2.2, color, 6)
+        assert vision._reddish_strokes(img, vision.light_layer(img), quad) is want, color
