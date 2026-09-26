@@ -4,15 +4,17 @@
 set -euo pipefail
 
 PORT="${1:-8080}"
-IMAGE="redactx:0.1.0"
 NAME="redactx"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# 镜像标签跟随 pyproject.toml 的版本号，升级后首次运行会自动构建新镜像
+VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' "$ROOT/pyproject.toml")"
+IMAGE="redactx:${VERSION}"
 DATA="$ROOT/data-container"
 
 mkdir -p "$DATA"
 container system status >/dev/null 2>&1 || container system start
 
-if ! container image list | grep -q "redactx"; then
+if ! container image inspect "$IMAGE" >/dev/null 2>&1; then
   container build -t "$IMAGE" -f "$ROOT/deploy/container/Containerfile" "$ROOT"
 fi
 
