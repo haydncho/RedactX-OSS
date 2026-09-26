@@ -236,7 +236,7 @@ textarea:focus, input[type=password]:focus, select:focus { outline: none; box-sh
 .icon-btn { width: 32px; height: 32px; border-radius: 9999px; border: 0; background: var(--canvas); box-shadow: 0 0 0 1px var(--hairline); cursor: pointer; font-size: 17px; line-height: 1; color: var(--ink); }
 .icon-btn:hover:not(:disabled) { background: var(--canvas-soft-2); }
 .icon-btn:disabled { opacity: .35; cursor: default; }
-.viewer-wrap { display: grid; grid-template-columns: 92px minmax(0, 1fr) 248px; gap: 12px; height: calc(100vh - 260px); min-height: 520px; }
+.viewer-wrap { display: grid; grid-template-columns: 92px minmax(0, 1fr) 300px; gap: 12px; height: calc(100vh - 260px); min-height: 520px; }
 .thumbs { overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 2px; scrollbar-width: thin; }
 .thumb { position: relative; flex: none; height: 112px; border: 0; border-radius: 6px; overflow: hidden; background: var(--stage); box-shadow: var(--ring); cursor: pointer; padding: 0; transition: box-shadow .15s; }
 .thumb:hover { box-shadow: 0 0 0 1px var(--hairline-strong); }
@@ -244,10 +244,20 @@ textarea:focus, input[type=password]:focus, select:focus { outline: none; box-sh
 .thumb[aria-current="true"] { box-shadow: 0 0 0 2px var(--primary); }
 .thumb .tn { position: absolute; right: 4px; bottom: 4px; font: 500 10px/1 var(--mono); background: var(--primary); color: var(--on-primary); padding: 3px 5px; border-radius: 4px; }
 .thumb .tc { position: absolute; left: 4px; top: 4px; font: 500 10px/1 var(--mono); background: var(--canvas); color: var(--ink); box-shadow: var(--ring); padding: 3px 5px; border-radius: 9999px; }
-.viewer { background-color: var(--stage); border-radius: 8px; box-shadow: var(--ring); overflow: auto; display: grid; place-items: center; padding: 20px; position: relative;
+.viewer-pane { position: relative; min-height: 0; min-width: 0; }
+/* flex + margin:auto 居中：放大后内容超出时仍能滚动到左、上边缘（grid 居中会被裁掉） */
+.viewer { height: 100%; background-color: var(--stage); border-radius: 8px; box-shadow: var(--ring); overflow: auto; display: flex; padding: 20px 20px 64px; position: relative; overscroll-behavior: contain;
   background-image: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--hairline-strong) 45%, transparent) 1px, transparent 0); background-size: 16px 16px; }
-.stage { position: relative; max-height: 100%; line-height: 0; box-shadow: var(--e5); border-radius: 2px; user-select: none; }
-.stage img { max-width: 100%; max-height: calc(100vh - 300px); display: block; }
+.stage { position: relative; margin: auto; flex: none; line-height: 0; box-shadow: var(--e5); border-radius: 2px; user-select: none; }
+.stage img { display: block; }
+#img-after { width: var(--page-w, auto); height: auto; max-width: none; }
+.zoombar { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; padding: 4px; background: var(--canvas); border-radius: 9999px; box-shadow: var(--e4); z-index: 2; }
+.zoombar button { height: 28px; min-width: 28px; padding: 0 8px; border: 0; border-radius: 9999px; background: none; color: var(--ink); font-size: 16px; line-height: 1; cursor: pointer; }
+.zoombar button:hover:not(:disabled) { background: var(--canvas-soft-2); }
+.zoombar button:disabled { color: var(--mute); cursor: default; }
+.zoombar #zoom-level { min-width: 56px; font-size: 12px; }
+.zoombar .zfit { font-size: 13px; }
+.zsep { width: 1px; height: 16px; background: var(--hairline); margin: 0 4px; }
 .before-clip { position: absolute; inset: 0; overflow: hidden; clip-path: inset(0 50% 0 0); }
 .before-clip img { width: 100%; height: 100%; max-height: none; }
 .boxes { position: absolute; inset: 0; pointer-events: none; }
@@ -268,12 +278,16 @@ textarea:focus, input[type=password]:focus, select:focus { outline: none; box-sh
 .total { font-size: 13px; color: var(--body); margin-bottom: 12px; }
 .total .num:first-child { font: 600 32px/40px var(--sans); letter-spacing: -0.04em; color: var(--ink); margin-right: 2px; }
 .counts, .page-items { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 1px; }
-.counts li { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
+.counts li { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 5px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
 .counts li:hover { background: var(--canvas); box-shadow: var(--ring); }
 .counts li.active { background: var(--canvas); box-shadow: 0 0 0 1px var(--primary); }
 .counts i, .page-items i { width: 6px; height: 6px; border-radius: 50%; flex: none; }
 .counts .n { margin-left: auto; color: var(--body); font-size: 12px; }
-.page-items li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--body); padding: 3px 8px; }
+.page-items li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--body); padding: 3px 8px; white-space: nowrap; }
+/* 统计行一律单行显示，放不下时省略，悬停看全文 */
+.counts .lb, .page-items .lb { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.counts .n, .page-items .src { flex: none; }
+.total { white-space: nowrap; }
 .page-items .src { margin-left: auto; font: 400 11px/16px var(--mono); color: var(--mute); }
 
 /* 最近任务：表格式行 */
@@ -304,6 +318,7 @@ dialog input { width: 100%; height: 40px; border: 0; box-shadow: 0 0 0 1px var(-
   .layout { grid-template-columns: minmax(0, 1fr); padding: 16px; }
   .settings { position: static; max-height: none; }
   .viewer-wrap { grid-template-columns: minmax(0, 1fr); height: auto; }
+  .viewer-pane { height: 72vh; }
   .thumbs { flex-direction: row; overflow-x: auto; }
   .thumb { width: 72px; height: 94px; }
   .dropzone { grid-template-columns: minmax(0, 1fr); padding: 32px 24px; min-height: 0; }

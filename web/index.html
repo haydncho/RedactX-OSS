@@ -152,12 +152,21 @@
         </div>
         <div class="viewer-wrap">
           <div class="thumbs" id="thumbs" aria-label="页面缩略图"></div>
-          <div class="viewer" id="viewer">
-            <div class="stage" id="stage">
-              <img id="img-after" alt="脱敏后页面">
-              <div class="before-clip" id="before-clip"><img id="img-before" alt="原件页面"></div>
-              <div class="boxes" id="boxes"></div>
-              <div class="handle" id="handle" role="slider" aria-label="对比分隔线" tabindex="0" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><span></span></div>
+          <div class="viewer-pane">
+            <div class="viewer" id="viewer">
+              <div class="stage" id="stage">
+                <img id="img-after" alt="脱敏后页面">
+                <div class="before-clip" id="before-clip"><img id="img-before" alt="原件页面"></div>
+                <div class="boxes" id="boxes"></div>
+                <div class="handle" id="handle" role="slider" aria-label="对比分隔线" tabindex="0" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><span></span></div>
+              </div>
+            </div>
+            <div class="zoombar" role="toolbar" aria-label="缩放" title="⌘ / Ctrl + 滚轮或双指捏合缩放">
+              <button type="button" id="zoom-out" aria-label="缩小">−</button>
+              <button type="button" id="zoom-level" class="num" aria-label="恢复为适应窗口">100%</button>
+              <button type="button" id="zoom-in" aria-label="放大">+</button>
+              <span class="zsep" aria-hidden="true"></span>
+              <button type="button" id="zoom-fit" class="zfit" aria-label="适应窗口">适应</button>
             </div>
           </div>
           <aside class="summary" aria-label="识别结果">
