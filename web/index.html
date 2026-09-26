@@ -147,7 +147,7 @@
         <p>支持 PDF 与图片（JPG、PNG、TIFF），Word（doc、docx）、WPS、RTF、ODT、Excel、PPT、Markdown 和纯文本。扫描件、系统导出件、混合 PDF 都可以。</p>
         <div class="cta-row"><button type="button" id="pick" class="btn primary lg"><svg class="ic" aria-hidden="true"><use href="#i-upload"/></svg>选择文件</button><span class="cta-hint">或直接拖入，也可以拖到页面任意位置</span></div>
         <div class="formats" aria-hidden="true"><span>PDF</span><span>JPG</span><span>PNG</span><span>TIFF</span><span>DOC</span><span>DOCX</span><span>WPS</span><span>RTF</span><span>XLSX</span><span>PPTX</span><span>MD</span><span>TXT</span></div>
-        <p class="drop-note">文件只在本机处理。Word、WPS 等文档先在本机转成 PDF 再脱敏，输出为 PDF。上传的原文件处理完立即删除；供“对比”查看的原件预览图（缩小版）与脱敏结果一起保留，按“结果保留”时长自动清除。勾选“保留原件以便复核”时另存打码前的全尺寸页面，复核完成或到期后删除。</p>
+        <p class="drop-note">文件只在本机处理。服务端不保存原文件名（常含患者姓名），最近任务里的文件名只记在本浏览器里。Word、WPS 等文档先在本机转成 PDF 再脱敏，输出为 PDF。上传的原文件处理完立即删除；供“对比”查看的原件预览图（缩小版）与脱敏结果一起保留，按“结果保留”时长自动清除。勾选“保留原件以便复核”时另存打码前的全尺寸页面，复核完成或到期后删除。</p>
       </div>
     </section>
 
@@ -240,7 +240,7 @@
 <dialog id="dlg-delete" class="dlg-danger">
   <form method="dialog">
     <h3><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>删除脱敏结果？</h3>
-    <p class="hint">将立即删除本任务的脱敏文件、报告和预览图，删除后无法恢复。原件预览图与为复核保留的打码前页面一并删除。上传的原文件在处理完成时已经删除。</p>
+    <p class="hint">将立即删除本任务的脱敏文件、报告和预览图，删除后无法恢复。原件预览图与为复核保留的打码前页面一并删除，本浏览器里记下的文件名也一并清除。上传的原文件在处理完成时已经删除。</p>
     <div class="dlg-actions"><button class="btn ghost" value="cancel" autofocus><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>取消</button><button class="btn danger-solid" value="ok"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>确认删除</button></div>
   </form>
 </dialog>
