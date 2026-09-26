@@ -60,7 +60,30 @@ RE_DATE = re.compile(r"(?:19|20)\d{2}[-/.年]\d{1,2}[-/.月]\d{1,2}|(?:19|20)\d{
 HOSPITAL_SUFFIX = r"(?:医院|卫生院|卫生服务中心|卫生服务站|保健院|医疗中心|医学中心|诊所|门诊部|急救中心|疾病预防控制中心|体检中心|血站|医科大学|医学院)"
 RE_HOSPITAL = re.compile(r"([一-龥]{2,20}?" + HOSPITAL_SUFFIX + r")(?:[一-龥]{0,6}(?:院区|分院))?")
 _HOSPITAL_BAD_PREFIX = ("转入", "转出", "转往", "送往", "前往", "送至", "转至", "就诊于", "住院于", "其他", "上级", "本院", "该院", "我院", "贵院", "外院", "医嘱", "转院", "拟接收", "接收", "当地", "各级", "定点", "基层", "社区卫生", "乡镇", "医疗机构", "同级", "专科", "综合", "到", "至", "在", "去", "于", "往", "来", "及", "或", "和", "等")
-RE_ORG = re.compile(r"[一-龥（）()]{2,30}?(?:有限责任公司|股份有限公司|有限公司|集团|银行|保险公司|事务所|委员会|管理局|人民政府)")
+ORG_SUFFIX = r"(?:有限责任公司|股份有限公司|有限公司|集团|银行|保险公司|事务所|委员会|管理局|人民政府)"
+RE_ORG = re.compile(r"[一-龥（）()]{2,30}?" + ORG_SUFFIX)
+
+
+# 医院名前面的句子成分：出现在“医院”之前时，在它之后截断。只用几乎不会出现在院名里的词，
+# 不用“和”“向”“平”等（北京协和医院、向阳医院、和平医院）
+_NAME_BOUNDARY_WORDS = ("患者", "本人", "家属", "同意", "告知", "须知", "住院", "入院", "出院", "就诊", "转诊", "转往", "转至", "转入", "转出",
+                        "期间", "治疗", "手术", "我院", "本院", "该院", "贵院", "如需", "需要", "以下", "前往", "送往", "签署", "协议", "规定", "所有")
+_NAME_BOUNDARY_CHARS = set("在到于往至经由从的是请对")
+
+
+def _name_start(name: str, suffix: str = HOSPITAL_SUFFIX) -> int:
+    """名称在 name 中的起点：机构后缀之前最后一个句子成分之后。"""
+    m = re.search(suffix, name)
+    head = name[: m.start()] if m else name
+    cut = 0
+    for w in _NAME_BOUNDARY_WORDS:
+        i = head.rfind(w)
+        if i >= 0:
+            cut = max(cut, i + len(w))
+    for i, ch in enumerate(head):
+        if ch in _NAME_BOUNDARY_CHARS:
+            cut = max(cut, i + 1)
+    return cut
 
 
 def _spans(regex: re.Pattern, text: str):
@@ -104,6 +127,9 @@ def find(text: str) -> list[tuple[str, int, int]]:
     for m in RE_HOSPITAL.finditer(text):
         name = m.group(0)
         a = m.start()
+        # 正则会从一串连续汉字的开头匹配：“患者在我院住院期间……某某医院”要截到最后一个虚词、动词之后，只留名称本身
+        cut = _name_start(name)
+        name, a = name[cut:], a + cut
         # 去掉“转入”“至”等动词前缀带来的误判
         while name and name.startswith(_HOSPITAL_BAD_PREFIX):
             cut = next(len(p) for p in _HOSPITAL_BAD_PREFIX if name.startswith(p))
@@ -112,6 +138,8 @@ def find(text: str) -> list[tuple[str, int, int]]:
         if len(core) >= 2 and free(a, a + len(name)):
             add("ORG", a, a + len(name))
     for a, b, s in _spans(RE_ORG, text):
+        cut = _name_start(s, ORG_SUFFIX)
+        a, s = a + cut, s[cut:]
         if free(a, b) and len(s) >= 5:
             add("ORG", a, b)
     return hits

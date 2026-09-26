@@ -23,6 +23,7 @@ NOT_NAME = set(
     """本人 无 不详 同上 拒绝 签名 签字 家属 患者 病人 医师 医生 护士 已签 未签 见上 空 未知 自己 其他 其它 同意 不同意 确认 日期 时间
     科室 主任 主治 住院 年龄 性别 男 女 岁 电话 地址 手机 查房 记录 病程 首次 日常 会诊 抢救 讨论 小结 交班 接班 复查 建议 病情
     高热 高烧 高血 黄疸 白细 查体 常规 严重 全身 平稳 安静 明显 康复 于今 于入 包块 方案 时间 目前
+    信息 须知 情况 意见 声明 义务 权利 资料 隐私 费用 协议 安全 管理 服务 保护 规定 制度 要求 注意 事项
     谈话 告知 知情 签署 委托 授权 执行 评估 核对 交接 说明 麻醉 护理 手术 治疗 检查 审核 复核 操作 采样 录入
     查看 给予 予以 考虑 继续""".split()
 )
@@ -47,6 +48,7 @@ class LabelHit:
     end: int
     label: str
     type: str
+    weak: bool = False  # 通用词后无冒号、凭“像手写姓名”才认作标签：取值只遮本处，不作种子
 
 
 def _match_at(text: str, i: int, vocab, maxlen: int) -> str | None:
@@ -92,10 +94,11 @@ def find_labels(page: PageData) -> list[LabelHit]:
             if not post_ok and i == 0 and lab not in GENERIC and line.source == "ocr":
                 post_ok = True
             # “患者”“医生”等通用词后面紧跟手写姓名、没有冒号时也算标签
+            weak = False
             if not post_ok and pre_ok and kind in ("PERSON", "STAFF") and _handwritten_name_after(line, i, j):
-                post_ok = True
+                post_ok = weak = True
             if pre_ok and post_ok:
-                out.append(LabelHit(li, i, j, lab, kind))
+                out.append(LabelHit(li, i, j, lab, kind, weak))
                 i = j
             else:
                 i += 1
@@ -325,7 +328,10 @@ def anchor(page: PageData, enabled: set[str]) -> tuple[list[Hit], list[tuple[str
         if any(value.startswith(w) for w in NOT_NAME if len(w) >= 2):
             continue
         if _valid(kind, value) and kind in enabled:
-            hits.append(Hit(kind, "anchor", page.index, lh.line, k, e, value))
+            # 通用词（医师、患者、签名……）后的取值证据弱：首字须是常见姓氏才作全文追踪的种子；
+            # 明确标签（姓名、主治医师、科主任……）后的照常作种子（手写姓名首字常被 OCR 认错，不能要求姓氏）
+            seed = not lh.weak and (lh.label not in GENERIC or _surname_start(value))
+            hits.append(Hit(kind, "anchor", page.index, lh.line, k, e, value, seed=seed))
             if is_sig:  # 签名之后到本行下一个字段的笔迹全部遮盖（收笔拖尾、认不出的字）；不用标签下方的备选区
                 fields += [(f[0], f[1], f[2], None) for f in _field_rects(page, line, lh, kind, is_sig, h, limit) if f[2]]
             continue
@@ -341,7 +347,8 @@ def anchor(page: PageData, enabled: set[str]) -> tuple[list[Hit], list[tuple[str
                     limit = nl.box[0] - 0.3 * h
                 v2 = ""
             if _valid(kind, v2) and kind in enabled:
-                hits.append(Hit(kind, "anchor", page.index, nb[0], k2, e2, v2))
+                # 取自标签旁边另一行的取值证据弱：首字须是常见姓氏才作种子（B 样例第 50 页的表单用语曾被追踪 65 次）
+                hits.append(Hit(kind, "anchor", page.index, nb[0], k2, e2, v2, seed=not lh.weak and _surname_start(v2)))
                 if is_sig:
                     fields += [(f[0], f[1], f[2], None) for f in _field_rects(page, line, lh, kind, is_sig, h, limit) if f[2]]
                 continue
