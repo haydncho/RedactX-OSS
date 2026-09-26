@@ -22,7 +22,9 @@ PUNCT_PRE = set("：:，,；;。.、()（）[]【】 |｜/")
 NOT_NAME = set(
     """本人 无 不详 同上 拒绝 签名 签字 家属 患者 病人 医师 医生 护士 已签 未签 见上 空 未知 自己 其他 其它 同意 不同意 确认 日期 时间
     科室 主任 主治 住院 年龄 性别 男 女 岁 电话 地址 手机 查房 记录 病程 首次 日常 会诊 抢救 讨论 小结 交班 接班 复查 建议 病情
-    高热 高烧 高血 黄疸 白细 查体 常规 严重 全身 平稳 安静 明显 康复 于今 于入 包块 方案 时间 目前""".split()
+    高热 高烧 高血 黄疸 白细 查体 常规 严重 全身 平稳 安静 明显 康复 于今 于入 包块 方案 时间 目前
+    谈话 告知 知情 签署 委托 授权 执行 评估 核对 交接 说明 麻醉 护理 手术 治疗 检查 审核 复核 操作 采样 录入
+    查看 给予 予以 考虑 继续""".split()
 )
 RE_CJK_NAME = re.compile(r"[一-龥·•]{2,5}")
 RE_ALNUM = re.compile(r"[0-9A-Za-z\-]+")
@@ -181,7 +183,15 @@ def _valid(kind: str, value: str) -> bool:
         return False
     if kind in ("PERSON", "STAFF"):
         # “主治医师查房记录”里的“查房记录”不是姓名：以病历常用词开头的取值一律不算
-        return bool(RE_CJK_NAME.fullmatch(value)) and value not in STOP_WORDS and not any(value.startswith(w) for w in NOT_NAME)
+        if not RE_CJK_NAME.fullmatch(value) or value in STOP_WORDS or any(value.startswith(w) for w in NOT_NAME):
+            return False
+        # 表单用词的前半截（“执行时间”里的“执行”、“评估者”的“评估”）不是姓名：它们一旦当成种子会在全文误遮
+        if any(len(w) > len(value) and w.startswith(value) for w in STOP_WORDS):
+            return False
+        # 中文姓名多为 2–4 字；5 字的只有复姓或带“·”的姓名才算，其余多是一句话的开头
+        if len(value.replace("·", "").replace("•", "")) >= 5 and value[:2] not in COMPOUND_SURNAMES and "·" not in value and "•" not in value:
+            return False
+        return True
     if kind in ("ID_CARD",):
         return len(RE_ALNUM.sub("", value)) <= 2 and sum(c.isalnum() for c in value) >= 6
     if kind == "PHONE":
