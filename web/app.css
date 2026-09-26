@@ -286,6 +286,25 @@ textarea:focus, input[type=password]:focus, select:focus { outline: none; box-sh
 .boxes { position: absolute; inset: 0; pointer-events: none; }
 .box { position: absolute; border: 1.5px solid var(--bc, var(--link)); border-radius: 3px; background: color-mix(in srgb, var(--bc, var(--link)) 8%, transparent); transition: opacity .15s; }
 .box.dim { opacity: .12; }
+/* 复核：在页面上拖出新框，点选后拖动、拉伸或删除 */
+.btn.sm { height: 28px; padding: 0 10px; font-size: 13px; gap: 5px; }
+.btn.sm .ic { width: 14px; height: 14px; }
+#btn-review[aria-pressed="true"] { background: var(--primary); color: var(--on-primary); box-shadow: none; }
+.review-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; padding: 8px 10px; margin: 0 0 12px; border-radius: 8px; background: var(--canvas-soft); box-shadow: var(--ring); font-size: 13px; }
+.review-bar[hidden] { display: none; }
+.rv-hint { color: var(--body); margin-right: auto; flex: 1 1 160px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv-type { display: inline-flex; align-items: center; gap: 6px; color: var(--body); white-space: nowrap; }
+.rv-type select { height: 28px; background: var(--canvas); border: 0; box-shadow: 0 0 0 1px var(--hairline); border-radius: 6px; padding: 0 8px; font-size: 13px; max-width: 150px; }
+.rv-dirty { color: var(--mute); white-space: nowrap; }
+.rv-dirty.on { color: var(--ink); font-weight: 500; }
+.btn:disabled { opacity: .4; cursor: default; }
+.stage.reviewing .boxes { pointer-events: auto; cursor: crosshair; }
+.stage.reviewing .box { cursor: pointer; background: color-mix(in srgb, var(--bc, var(--link)) 14%, transparent); }
+.stage.reviewing .box.edit { cursor: move; }
+.box.new { border-style: dashed; }
+.box.sel { border-width: 2px; box-shadow: 0 0 0 3px color-mix(in srgb, var(--bc, var(--link)) 30%, transparent); z-index: 1; }
+.box .rs { position: absolute; right: -5px; bottom: -5px; width: 10px; height: 10px; border-radius: 2px; background: var(--canvas); box-shadow: 0 0 0 1.5px var(--bc, var(--link)); cursor: nwse-resize; }
+.viewer.pan .stage.reviewing .boxes { pointer-events: none; }
 .handle { position: absolute; top: 0; bottom: 0; left: 50%; width: 0; cursor: ew-resize; }
 .handle::before { content: ""; position: absolute; top: 0; bottom: 0; left: -0.5px; width: 1px; background: #171717; }
 .handle span { position: absolute; top: 50%; left: -16px; width: 32px; height: 32px; margin-top: -16px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.12), 0 4px 12px rgba(0,0,0,.18); }

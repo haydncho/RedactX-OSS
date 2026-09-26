@@ -11,12 +11,12 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Path as PathParam, Query, UploadFile
+from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, Path as PathParam, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from redactx import __version__
+from redactx import __version__, review
 from redactx.catalog import ENTITIES, ENTITY_BY_CODE, ENTITY_GROUPS, PRESETS, STYLE_CODES, STYLES
 from redactx.config import settings
 from redactx.convert import OFFICE_KINDS
@@ -35,6 +35,7 @@ TAGS = [
     {"name": "系统", "description": "服务状态"},
     {"name": "目录", "description": "可选的实体类型、打码样式与场景预设"},
     {"name": "任务", "description": "异步脱敏：提交后轮询状态，完成后下载结果、报告与预览"},
+    {"name": "复核", "description": "人工复核：加框、删框、改框后重新打码并重建输出"},
     {"name": "同步", "description": "小文件直接返回脱敏结果"},
 ]
 # 不用 Swagger/ReDoc：它们会从外部 CDN 加载脚本，违反本地运行、不联网的要求。接口文档页见 /docs（web/api.html），机器可读描述见 /openapi.json
@@ -84,6 +85,7 @@ def parse_options(raw: str | None, password: str | None) -> Options:
         o.dpi = d["dpi"]
     v = d.get("verify", "auto")
     o.verify = "auto" if v == "auto" else bool(v)
+    o.keep_source = bool(d.get("keep_source", False))
     o.password = password or None
     return o
 
@@ -137,7 +139,7 @@ def styles():
 
 
 @app.post("/v1/jobs", status_code=202, tags=["任务"], summary="提交异步任务",
-          description="上传文件，立即返回 job_id，后台排队处理。用 GET /v1/jobs/{job_id} 轮询，status 为 succeeded 后下载结果。原件处理完立即删除。",
+          description="上传文件，立即返回 job_id，后台排队处理。用 GET /v1/jobs/{job_id} 轮询，status 为 succeeded 后下载结果。原件处理完立即删除；options.keep_source 为 true 时另存打码前的页面供复核删框、改框，复核完成或到期时删除。",
           dependencies=[Depends(auth)])
 async def create_job(
     file: UploadFile = File(..., description="PDF、图片或 Word/WPS/Excel/PPT/Markdown/TXT 等文档，按文件头识别真实类型"),
@@ -202,6 +204,38 @@ def get_preview(job_id: str = PathParam(..., description="任务 ID"), page: int
     if not p.exists():
         error(404, "NOT_FOUND", "预览不存在")
     return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+def _review_job(job_id: str) -> dict:
+    job = store.get(job_id)
+    if not job:
+        error(404, "NOT_FOUND", "任务不存在或已过期删除")
+    if job["status"] != "succeeded":
+        error(409, "NOT_READY", "任务尚未完成")
+    if not (store.dir(job_id) / "out" / "layout.json").exists():
+        error(409, "NOT_EDITABLE", "该任务由旧版本处理，不支持复核")
+    return job
+
+
+@app.put("/v1/jobs/{job_id}/review", tags=["复核"], summary="提交复核后的遮盖框",
+         description="body 为 {\"items\": [...]}：本任务全部遮盖框（格式同打码报告的 items；新框只需 page、type、box，style 可省略）。"
+                     "服务按改动重新打码受影响的页并重建输出，返回新的报告。提交时 options.keep_source 为 true 的任务可以加框、删框、改框；"
+                     "其余任务只能加框，删框或改框返回 409 NOT_EDITABLE。",
+         dependencies=[Depends(auth)])
+async def put_review(job_id: str = PathParam(..., description="任务 ID"), body: dict = Body(..., description='{"items": [...]}')):
+    _review_job(job_id)
+    try:
+        return await run_in_threadpool(store.review, job_id, review.apply, body.get("items"))
+    except review.ReviewError as e:
+        error(409 if e.code == "NOT_EDITABLE" else 400, e.code, str(e))
+
+
+@app.post("/v1/jobs/{job_id}/review/finish", tags=["复核"], summary="复核完成",
+          description="立即删除为复核保留的打码前页面。之后只能再加框。", dependencies=[Depends(auth)])
+async def finish_review(job_id: str = PathParam(..., description="任务 ID")):
+    _review_job(job_id)
+    rep = await run_in_threadpool(store.review, job_id, review.finish)
+    return rep["review"]
 
 
 @app.delete("/v1/jobs/{job_id}", tags=["任务"], summary="删除结果", description="立即删除脱敏文件、报告与预览，不等保留时长到期。处理中的任务返回 409。", dependencies=[Depends(auth)])

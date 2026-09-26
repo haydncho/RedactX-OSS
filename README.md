@@ -50,6 +50,8 @@ deploy/container/run.sh          # 默认端口 8090、容器名 redactx-oss；�
 | GET | `/v1/jobs/{id}/result` | 下载脱敏文件 |
 | GET | `/v1/jobs/{id}/report` | 打码报告：页码、类型、来源、归一化坐标，不含原文 |
 | GET | `/v1/jobs/{id}/preview/{page}?v=before\|after` | 预览图 |
+| PUT | `/v1/jobs/{id}/review` | 提交复核后的全部遮盖框，重新打码受影响的页并重建输出 |
+| POST | `/v1/jobs/{id}/review/finish` | 复核完成，删除为复核保留的打码前页面 |
 | DELETE | `/v1/jobs/{id}` | 立即删除结果与预览 |
 | POST | `/v1/redact` | 同步脱敏，限 10 页、20 MB，直接返回文件 |
 | GET | `/v1/catalog` | 实体类型、样式、预设 |
@@ -65,11 +67,14 @@ deploy/container/run.sh          # 默认端口 8090、容器名 redactx-oss；�
   "mode": "strict",
   "label_text": "type",
   "dpi": 200,
-  "verify": "auto"
+  "verify": "auto",
+  "keep_source": false
 }
 ```
 
 样式：`label` 浅色标签、`background` 背景色擦除、`replace` 代号替换、`mosaic` 安全马赛克、`hatch` 斜线花纹、`inpaint` 图像修复、`black` 黑色块。所有样式都先擦除原像素再绘制外观。
+
+**复核**：在 Web 页查看结果时点“复核”，可以在页面上拖出新框补遮漏掉的内容，保存后重新打码并重建输出。原件默认处理完即删除，已打码的像素无法恢复，所以只能加框。提交时打开“保留原件以便复核”（`keep_source`），会另存打码前的页面，复核时还可以删框、改框；点“完成复核”或任务到期时删除。
 
 设置环境变量 `REDACTX_API_KEY` 后，所有 `/v1` 接口需要请求头 `X-API-Key`。
 

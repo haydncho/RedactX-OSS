@@ -35,6 +35,8 @@
   <symbol id="i-zoom-in" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M8 11h6M11 8v6"/></symbol>
   <symbol id="i-zoom-out" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M8 11h6"/></symbol>
   <symbol id="i-hand" viewBox="0 0 24 24"><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 11.5V4a1.5 1.5 0 0 1 3 0v7.5M14 11.5V5.5a1.5 1.5 0 0 1 3 0V13M17 9.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.5a6 6 0 0 1-5-2.7L4.2 14a1.6 1.6 0 0 1 2.6-1.8L8 13.5"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3zM13.5 8.5l3 3"/></symbol>
+  <symbol id="i-plus-square" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M12 8.5v7M8.5 12h7"/></symbol>
   <symbol id="i-fit" viewBox="0 0 24 24"><path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4"/></symbol>
 </defs></svg>
 <header class="topbar">
@@ -106,6 +108,10 @@
           <button type="button" data-v="off" role="radio">关闭</button>
         </div>
       </div>
+      <label class="opt-row switch-row" for="opt-keep">
+        <span class="opt-label">保留原件以便复核<small>复核时可删框、改框；复核完成或到期后删除</small></span>
+        <input type="checkbox" id="opt-keep" class="switch">
+      </label>
       <div class="opt-row">
         <label class="opt-label" for="opt-retention">结果保留</label>
         <select id="opt-retention">
@@ -141,7 +147,7 @@
         <p>支持 PDF 与图片（JPG、PNG、TIFF），Word（doc、docx）、WPS、RTF、ODT、Excel、PPT、Markdown 和纯文本。扫描件、系统导出件、混合 PDF 都可以。</p>
         <div class="cta-row"><button type="button" id="pick" class="btn primary lg"><svg class="ic" aria-hidden="true"><use href="#i-upload"/></svg>选择文件</button><span class="cta-hint">或直接拖入，也可以拖到页面任意位置</span></div>
         <div class="formats" aria-hidden="true"><span>PDF</span><span>JPG</span><span>PNG</span><span>TIFF</span><span>DOC</span><span>DOCX</span><span>WPS</span><span>RTF</span><span>XLSX</span><span>PPTX</span><span>MD</span><span>TXT</span></div>
-        <p class="drop-note">文件只在本机处理。Word、WPS 等文档先在本机转成 PDF 再脱敏，输出为 PDF。原件处理完立即删除，脱敏结果按“结果保留”时长自动清除。</p>
+        <p class="drop-note">文件只在本机处理。Word、WPS 等文档先在本机转成 PDF 再脱敏，输出为 PDF。原件处理完立即删除（勾选“保留原件以便复核”的，复核完成或到期后删除），脱敏结果按“结果保留”时长自动清除。</p>
       </div>
     </section>
 
@@ -176,11 +182,21 @@
             <button type="button" data-v="before" role="radio">原件</button>
           </div>
           <label class="check-inline"><input type="checkbox" id="show-boxes" checked> 显示遮盖框</label>
+          <button type="button" class="btn ghost sm" id="btn-review" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg>复核</button>
           <div class="pager">
             <button type="button" class="icon-btn" id="pg-prev" aria-label="上一页"><svg class="ic" aria-hidden="true"><use href="#i-chev-left"/></svg></button>
             <span class="num" id="pg-label">1 / 1</span>
             <button type="button" class="icon-btn" id="pg-next" aria-label="下一页"><svg class="ic" aria-hidden="true"><use href="#i-chev-right"/></svg></button>
           </div>
+        </div>
+        <div class="review-bar" id="review-bar" hidden>
+          <span class="rv-hint" id="rv-hint"></span>
+          <label class="rv-type"><svg class="ic" aria-hidden="true"><use href="#i-plus-square"/></svg>新框类型<select id="rv-type"></select></label>
+          <button type="button" class="btn ghost sm danger" id="rv-del" disabled><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>删除所选</button>
+          <span class="rv-dirty" id="rv-dirty"></span>
+          <button type="button" class="btn ghost sm" id="rv-finish" hidden title="删除为复核保留的打码前页面"><svg class="ic" aria-hidden="true"><use href="#i-check-all"/></svg>完成复核</button>
+          <button type="button" class="btn ghost sm" id="rv-cancel"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>放弃修改</button>
+          <button type="button" class="btn primary sm" id="rv-save" disabled><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>保存并重新打码</button>
         </div>
         <div class="viewer-wrap">
           <div class="thumbs" id="thumbs" aria-label="页面缩略图"></div>
@@ -224,8 +240,16 @@
 <dialog id="dlg-delete" class="dlg-danger">
   <form method="dialog">
     <h3><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>删除脱敏结果？</h3>
-    <p class="hint">将立即删除本任务的脱敏文件、报告和预览图，删除后无法恢复。原件在处理完成时已经删除。</p>
+    <p class="hint">将立即删除本任务的脱敏文件、报告和预览图，删除后无法恢复。原件在处理完成时已经删除；为复核保留的打码前页面一并删除。</p>
     <div class="dlg-actions"><button class="btn ghost" value="cancel" autofocus><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>取消</button><button class="btn danger-solid" value="ok"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>确认删除</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-finish">
+  <form method="dialog">
+    <h3><svg class="ic" aria-hidden="true"><use href="#i-check-all"/></svg>完成复核？</h3>
+    <p class="hint">将立即删除为复核保留的打码前页面。之后仍可加框，但不能再删框或改框。</p>
+    <div class="dlg-actions"><button class="btn ghost" value="cancel" autofocus><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>取消</button><button class="btn primary" value="ok"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>完成并删除</button></div>
   </form>
 </dialog>
 

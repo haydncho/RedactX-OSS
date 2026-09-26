@@ -2,6 +2,7 @@
 
 - 任务元数据存 SQLite；文件存本地数据目录，每个任务一个子目录。
 - 不保存原文件名（常含患者姓名），只保存扩展名与页数。
+- 原件处理完即删除；选择“保留原件以便复核”的任务另存打码前的页面，复核完成或到期时删除。
 - 后台线程串行处理任务（16 GB 内存的本机上避免同时加载多份模型），到期自动删除。
 """
 
@@ -49,6 +50,7 @@ class JobStore:
         self.root = root
         self.db_path = root / "jobs.sqlite3"
         self._lock = threading.Lock()
+        self._review_lock = threading.Lock()
         with self._conn() as c:
             c.execute(_SCHEMA)
             # 服务重启时，未完成的任务标记为失败
@@ -112,9 +114,17 @@ class JobStore:
             log.error("job %s crashed: %s\n%s", job_id, type(e).__name__, "".join(traceback.format_tb(e.__traceback__)[-3:]))
             self._update(job_id, status="failed", error_code="INTERNAL", error="处理失败，请稍后重试或联系管理员", message="失败")
         finally:
-            # 原件处理完即删除，只保留脱敏输出与预览
+            # 原件处理完即删除；保留脱敏后的页面，复核加框时在其上重打码
             shutil.rmtree(self.dir(job_id) / "in", ignore_errors=True)
-            shutil.rmtree(self.dir(job_id) / "out" / "pages", ignore_errors=True)
+
+    def review(self, job_id: str, fn, *args) -> dict:
+        """复核改动串行执行，并同步更新任务摘要里的遮盖数量。"""
+        with self._review_lock:
+            report = fn(self.dir(job_id) / "out", *args)
+        job = self.get(job_id)
+        summary = {**(job["summary"] or {}), "counts": report["counts"]}
+        self._update(job_id, summary=json.dumps(summary, ensure_ascii=False))
+        return report
 
     def get(self, job_id: str) -> dict | None:
         with self._conn() as c:
