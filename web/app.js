@@ -28,6 +28,15 @@
 
   const STORE_KEY = "redactx.settings.v1";
   const KEY_KEY = "redactx.apikey";
+  // 原文件名常含患者姓名，服务端不保存；只记在本浏览器里（按任务 ID），任务删除或过期后一并清掉
+  const NAMES_KEY = "redactx.jobnames.v1";
+  const jobNames = {
+    all() { return store.get(NAMES_KEY, {}) || {}; },
+    get(id) { return this.all()[id] || ""; },
+    set(id, name) { const m = this.all(); m[id] = name; store.set(NAMES_KEY, m); },
+    drop(id) { const m = this.all(); if (id in m) { delete m[id]; store.set(NAMES_KEY, m); } },
+    keepOnly(ids) { const m = this.all(), keep = new Set(ids); let changed = false; for (const k of Object.keys(m)) if (!keep.has(k)) { delete m[k]; changed = true; } if (changed) store.set(NAMES_KEY, m); },
+  };
   const store = {
     get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* 隐私模式下忽略 */ } },
@@ -233,6 +242,7 @@
       let body = {}; try { body = JSON.parse(xhr.responseText); } catch { /* ignore */ }
       if (xhr.status >= 300) { showError(body.error?.message || `上传失败（${xhr.status}）`); return; }
       job.id = body.job_id; job.pages = body.pages;
+      jobNames.set(job.id, file.name);
       $("#job-meta").textContent = body.pages ? `${body.pages} 页 · 已提交` : "已提交 · 先转换为 PDF";
       poll();
     };
@@ -677,7 +687,9 @@
   // ---------- 历史 ----------
   async function refreshHistory() {
     try {
-      const list = await (await api("/v1/jobs?limit=12")).json();
+      const all = await (await api("/v1/jobs?limit=100")).json();
+      if (all.length < 100) jobNames.keepOnly(all.map((j) => j.id));  // 服务端已删除或过期的任务，本地记的文件名也清掉
+      const list = all.slice(0, 12);
       const ul = $("#history"); ul.replaceChildren();
       $("#history-wrap").hidden = !list.length;
       const ST = { succeeded: "完成", failed: "失败", running: "处理中", queued: "排队" };
@@ -686,7 +698,9 @@
         const when = new Date(j.created * 1000).toLocaleString("zh-CN", { hour12: false, month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
         ul.append(el("li", {},
           el("span", { class: "when num", text: when }),
-          el("span", { text: `${(j.input_ext || "").toUpperCase()} · ${j.pages ?? "?"} 页${total != null ? ` · 遮盖 ${total} 处` : ""}` }),
+          el("div", { class: "hist-main" },
+            el("span", { class: "hist-name", text: jobNames.get(j.id) || `任务 ${j.id.slice(4, 12)}`, title: jobNames.get(j.id) || "文件名只保存在提交它的浏览器里" }),
+            el("span", { class: "hist-meta", text: `${(j.input_ext || "").toUpperCase()} · ${j.pages ?? "?"} 页${total != null ? ` · 遮盖 ${total} 处` : ""}` })),
           el("span", { class: `status ${j.status}`, text: ST[j.status] || j.status }),
           j.status === "succeeded" ? el("button", { type: "button", onclick: () => openJob(j.id, j.input_ext) }, icon("eye"), "查看") : el("span")));
       }
@@ -696,7 +710,7 @@
   }
 
   async function openJob(id, ext) {
-    job = { id, name: `任务 ${id.slice(4, 12)}`, kind: (ext || "").toUpperCase() };
+    job = { id, name: jobNames.get(id) || `任务 ${id.slice(4, 12)}`, kind: (ext || "").toUpperCase() };
     blobCache.clear(); typeFilter = null;
     showJob();
     const j = await (await api(`/v1/jobs/${id}`)).json();
@@ -759,7 +773,7 @@
     $("#btn-delete").onclick = () => { if (job?.id) { dlgDel.returnValue = ""; dlgDel.showModal(); } };
     dlgDel.addEventListener("close", async () => {
       if (dlgDel.returnValue !== "ok" || !job?.id) return;
-      try { await api(`/v1/jobs/${job.id}`, { method: "DELETE" }); toast("已删除脱敏结果与预览"); } catch (e) { toast(e.message); return; }
+      try { await api(`/v1/jobs/${job.id}`, { method: "DELETE" }); jobNames.drop(job.id); toast("已删除脱敏结果与预览"); } catch (e) { toast(e.message); return; }
       $("#btn-new").click(); refreshHistory();
     });
     $("#pg-prev").onclick = () => gotoPage(page - 1);

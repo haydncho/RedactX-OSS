@@ -368,6 +368,9 @@ textarea:focus, input[type=password]:focus, select:focus { outline: none; box-sh
 .history li { display: grid; grid-template-columns: 96px 1fr auto auto; gap: 16px; align-items: center; padding: 10px 0; border-top: 1px solid var(--hairline); font-size: 14px; }
 .history li:first-child { border-top: 0; }
 .history .when { color: var(--mute); font-size: 12px; }
+.hist-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.hist-name { color: var(--ink); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-meta { color: var(--mute); font-size: 12px; }
 .status { font-size: 12px; line-height: 20px; padding: 0 8px; border-radius: 9999px; justify-self: start; }
 .status.succeeded { background: var(--link-soft); color: var(--link-deep); }
 .status.running, .status.queued { background: var(--warning-soft); color: var(--warning-deep); }
