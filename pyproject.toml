@@ -18,6 +18,7 @@ dependencies = [
   "rapidfuzz>=3.9",
   "rapidocr>=3.4",
   "onnxruntime>=1.19",
+  "tokenizers>=0.19",
   "markdown>=3.6",
 ]
 
