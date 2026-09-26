@@ -1,0 +1,270 @@
+"""把表单版面渲染成 PDF 页面：系统导出（文字层）或扫描件（整页图片），同时产出标准答案框。
+
+标准答案框一律是最终页面上的归一化坐标 [x0, y0, x1, y1]，左上角为原点，与脱敏报告的 box 字段一致。
+"""
+
+from __future__ import annotations
+
+import ctypes
+import io
+import random
+from dataclasses import dataclass
+
+import cv2
+import numpy as np
+import pypdfium2 as pdfium
+import pypdfium2.raw as raw
+from PIL import Image, ImageDraw
+
+from . import fonts
+from .forms import El, Page, seal_rgba
+
+_ASC = 0.88  # 文字对象基线相对字号的位置：让 El.y 大致落在字的顶部
+
+
+@dataclass
+class Truth:
+    type: str
+    role: str  # redact | keep
+    form: str  # print | hand | image | seal
+    box: list[float]
+    text: str = ""
+
+    def json(self, page: int) -> dict:
+        return {"page": page, "type": self.type, "role": self.role, "form": self.form, "box": [round(v, 5) for v in self.box], "text": self.text}
+
+
+def page_chars(pages: list[Page]) -> str:
+    return "".join(sorted({ch for p in pages for e in p.els for ch in e.text}))
+
+
+class Writer:
+    """用 PDFium 写 PDF：文字对象、图片对象、线条。字体只嵌入用到的字。"""
+
+    def __init__(self, chars: str):
+        self.pdf = pdfium.PdfDocument.new()
+        self._keep = []  # 字体数据必须在文档存续期间保持有效
+        self.font = self._load(*fonts.print_font(), chars)
+        self.bold = self._load(*fonts.bold_font(), chars)
+
+    def _load(self, path: str, index: int, chars: str):
+        data = fonts.subset_bytes(path, index, chars)
+        buf = (ctypes.c_uint8 * len(data)).from_buffer_copy(data)
+        self._keep.append(buf)
+        font = raw.FPDFText_LoadFont(self.pdf.raw, buf, len(data), raw.FPDF_FONT_TRUETYPE, 1)
+        if not font:
+            raise fonts.FontMissing(f"PDFium 无法加载字体 {path}")
+        return font
+
+    # ---------- 元素 ----------
+    def _text(self, page, W, H, x, y, s, size, bold) -> tuple[float, float, float, float]:
+        obj = raw.FPDFPageObj_CreateTextObj(self.pdf.raw, self.bold if bold else self.font, ctypes.c_float(size))
+        ws = ctypes.create_string_buffer((s + "\0").encode("utf-16-le"))
+        raw.FPDFText_SetText(obj, ctypes.cast(ws, ctypes.POINTER(raw.FPDF_WCHAR)))
+        raw.FPDFPageObj_Transform(obj, 1, 0, 0, 1, x, H - y - size * _ASC)
+        raw.FPDFPage_InsertObject(page.raw, obj)
+        l, b, r, t = (ctypes.c_float() for _ in range(4))
+        raw.FPDFPageObj_GetBounds(obj, l, b, r, t)
+        return l.value, H - t.value, r.value, H - b.value
+
+    def _image(self, page, H, x, y, w, h, im: Image.Image, jpeg: bool = False):
+        obj = pdfium.PdfImage.new(self.pdf)
+        if jpeg:
+            buf = io.BytesIO()
+            im.save(buf, "JPEG", quality=72)
+            buf.seek(0)
+            obj.load_jpeg(buf, inline=True)
+        else:
+            obj.set_bitmap(pdfium.PdfBitmap.from_pil(im.convert("RGB")))
+        obj.set_matrix(pdfium.PdfMatrix().scale(w, h).translate(x, H - y - h))
+        page.insert_obj(obj)
+
+    def _line(self, page, H, e: El):
+        path = raw.FPDFPageObj_CreateNewPath(ctypes.c_float(e.x), ctypes.c_float(H - e.y))
+        raw.FPDFPath_LineTo(path, ctypes.c_float(e.w), ctypes.c_float(H - e.h))
+        raw.FPDFPageObj_SetStrokeColor(path, 0, 0, 0, 255)
+        raw.FPDFPageObj_SetStrokeWidth(path, ctypes.c_float(e.size))
+        raw.FPDFPath_SetDrawMode(path, raw.FPDF_FILLMODE_NONE, 1)
+        raw.FPDFPage_InsertObject(page.raw, path)
+
+    # ---------- 页面 ----------
+    def text_page(self, p: Page, rng: random.Random, scan_base: bool = False) -> list[Truth]:
+        """系统导出页。scan_base=True 时只画印刷部分（手写与印章留给扫描渲染）。"""
+        page = self.pdf.new_page(p.w, p.h)
+        W, H = p.w, p.h
+        out: list[Truth] = []
+        for e in p.els:
+            if e.kind == "line":
+                self._line(page, H, e)
+            elif e.kind == "text" or (e.kind == "hand" and not e.esign and not scan_base):
+                box = self._text(page, W, H, e.x, e.y, e.text, e.size, e.bold)
+                if e.truth and e.text.strip():
+                    out.append(Truth(e.truth[0], e.truth[1], "print", _norm(box, W, H), e.text))
+            elif e.kind == "hand" and e.esign and not scan_base:
+                im, _ = hand_image(e.text, 96, rng, signature=True)
+                h = e.size * 1.7
+                w = h * im.width / im.height
+                y = e.y + e.size * 0.5 - h / 2
+                self._image(page, H, e.x, y, w, h, im)
+                out.append(Truth("SIGNATURE", "redact", "image", _norm((e.x, y, e.x + w, y + h), W, H), e.text))
+            elif e.kind == "image":
+                self._image(page, H, e.x, e.y, e.w, e.h, e.image)
+                if e.truth:
+                    # 答案框只框图片里的实际内容（二维码四周的静区不算）
+                    fx0, fy0, fx1, fy1 = _content_box(e.image)
+                    box = (e.x + fx0 * e.w, e.y + fy0 * e.h, e.x + fx1 * e.w, e.y + fy1 * e.h)
+                    out.append(Truth(e.truth[0], e.truth[1], "image", _norm(box, W, H)))
+            elif e.kind == "seal" and not scan_base:
+                s = seal_rgba(e.text, 360)
+                bg = Image.new("RGB", s.size, "white")
+                bg.paste(s, mask=s.split()[3])
+                self._image(page, H, e.x, e.y, e.w, e.h, bg)
+                out.append(Truth("SEAL", "redact", "seal", _norm((e.x, e.y, e.x + e.w, e.y + e.h), W, H), e.text))
+        page.gen_content()
+        return out
+
+    def image_page(self, im: Image.Image, w_pt: float, h_pt: float) -> None:
+        page = self.pdf.new_page(w_pt, h_pt)
+        self._image(page, h_pt, 0, 0, w_pt, h_pt, im, jpeg=True)
+        page.gen_content()
+
+    def save(self, path) -> None:
+        self.pdf.save(str(path))
+
+
+def _content_box(im: Image.Image) -> tuple[float, float, float, float]:
+    """图片中非白色内容的外框，按图片宽高归一化。"""
+    a = np.asarray(im.convert("L")) < 235
+    ys, xs = np.nonzero(a)
+    if len(xs) == 0:
+        return 0.0, 0.0, 1.0, 1.0
+    h, w = a.shape
+    return xs.min() / w, ys.min() / h, (xs.max() + 1) / w, (ys.max() + 1) / h
+
+
+def _norm(box, W, H) -> list[float]:
+    x0, y0, x1, y1 = box
+    return [max(x0, 0) / W, max(y0, 0) / H, min(x1, W) / W, min(y1, H) / H]
+
+
+# ---------- 手写 ----------
+
+def hand_image(text: str, px: int, rng: random.Random, signature: bool = False, ink=(28, 36, 92)) -> tuple[Image.Image, tuple[int, int, int, int]]:
+    """用手写风格字体逐字绘制，加随机倾斜、大小和基线抖动。返回 (白底 RGB 图, 墨迹外框)。"""
+    rgba = hand_rgba(text, px, rng, signature, ink)
+    bg = Image.new("RGB", rgba.size, "white")
+    bg.paste(rgba, mask=rgba.split()[3])
+    return bg, rgba.getbbox() or (0, 0, rgba.width, rgba.height)
+
+
+def hand_rgba(text: str, px: int, rng: random.Random, signature: bool = False, ink=(28, 36, 92)) -> Image.Image:
+    path, idx = rng.choice(fonts.hand_fonts()[:3] if signature else fonts.hand_fonts())
+    f = fonts.pil_font(path, idx, px)
+    step = 0.72 if signature else 0.95
+    canvas = Image.new("RGBA", (int(px * (len(text) * step + 1.4)), int(px * 1.8)), (0, 0, 0, 0))
+    x = px * 0.3
+    for ch in text:
+        tile = Image.new("RGBA", (int(px * 1.5), int(px * 1.5)), (0, 0, 0, 0))
+        ImageDraw.Draw(tile).text((tile.width / 2, tile.height / 2), ch, font=f, fill=ink + (255,), anchor="mm")
+        s = rng.uniform(0.88, 1.15) * (1.1 if signature else 1.0)
+        tile = tile.resize((int(tile.width * s), int(tile.height * s)), Image.BICUBIC)
+        tile = tile.rotate(rng.uniform(-7, 7) + (-10 if signature else 0), resample=Image.BICUBIC)
+        dy = rng.uniform(-0.08, 0.08) * px
+        canvas.alpha_composite(tile, (int(x - (tile.width - px) / 2 - px * 0.25), max(0, int(px * 0.15 + dy - (tile.height - px * 1.5) / 2))))
+        x += px * step * rng.uniform(0.9, 1.1)
+    if signature:
+        # 签名常见的收笔拖尾
+        d = ImageDraw.Draw(canvas)
+        y = canvas.height * rng.uniform(0.62, 0.75)
+        d.line([(x - px * 0.4, y), (x + px * 0.4, y - px * 0.25)], fill=ink + (230,), width=max(2, px // 18))
+        canvas = canvas.transform(canvas.size, Image.AFFINE, (1, 0.25, -canvas.height * 0.12, 0, 1, 0), resample=Image.BICUBIC)
+    bb = canvas.getbbox()
+    return canvas.crop(bb) if bb else canvas
+
+
+# ---------- 扫描件 ----------
+
+def scan_page(p: Page, chars: str, dpi: int, paper: str, rng: random.Random, rotate: bool = False) -> tuple[Image.Image, list[Truth], tuple[float, float]]:
+    """扫描件：印刷底图 + 手写 + 盖章 + 纸张与扫描退化。返回 (整页图, 标准答案, 页面尺寸 pt)。"""
+    w = Writer(chars)
+    truths = w.text_page(p, rng, scan_base=True)
+    scale = dpi / 72
+    im = w.pdf[0].render(scale=scale).to_pil().convert("RGB")
+    W, H = im.size
+    # 印刷文字：换算到像素
+    items = [(t, [t.box[0] * W, t.box[1] * H, t.box[2] * W, t.box[3] * H]) for t in truths]
+    for e in p.els:
+        if e.kind == "hand":
+            px = int(e.size * scale * (1.35 if not e.esign else 1.6))
+            rgba = hand_rgba(e.text, px, rng, signature=e.esign)
+            x = int(e.x * scale + rng.uniform(0, 0.4) * px)
+            y = int((e.y + e.size * 0.5) * scale - rgba.height / 2 + rng.uniform(-0.12, 0.12) * px)
+            im.paste(rgba, (x, y), rgba)
+            t = e.truth or ("PERSON", "redact")
+            items.append((Truth(t[0], t[1], "hand", [], e.text), [x, y, x + rgba.width, y + rgba.height]))
+        elif e.kind == "seal":
+            size = int(e.w * scale)
+            s = seal_rgba(e.text, size).rotate(rng.uniform(-18, 18), resample=Image.BICUBIC, expand=False)
+            x, y = int(e.x * scale + rng.uniform(-8, 8)), int(e.y * scale + rng.uniform(-8, 8))
+            _multiply(im, s, x, y, alpha=rng.uniform(0.7, 0.92))
+            bb = s.getbbox() or (0, 0, size, size)
+            items.append((Truth("SEAL", "redact", "seal", [], e.text), [x + bb[0], y + bb[1], x + bb[2], y + bb[3]]))
+    arr, M = _degrade(np.asarray(im), paper, rng)
+    boxes = [_affine_box(b, M) for _, b in items]
+    w_pt, h_pt = p.w, p.h
+    if rotate:
+        # 横放扫描：内容逆时针转 90°，页面变为横向
+        Hh, Ww = arr.shape[:2]
+        arr = np.ascontiguousarray(np.rot90(arr, 1))
+        boxes = [[y0, Ww - x1, y1, Ww - x0] for x0, y0, x1, y1 in boxes]
+        W, H = arr.shape[1], arr.shape[0]
+        w_pt, h_pt = h_pt, w_pt
+    else:
+        H, W = arr.shape[:2]
+    out = []
+    for (t, _), b in zip(items, boxes):
+        t.box = _norm(b, W, H)
+        out.append(t)
+    return Image.fromarray(arr), out, (w_pt, h_pt)
+
+
+def _multiply(im: Image.Image, rgba: Image.Image, x: int, y: int, alpha: float) -> None:
+    base = np.asarray(im).astype(np.float32)
+    s = np.asarray(rgba).astype(np.float32)
+    h, w = s.shape[:2]
+    x0, y0, x1, y1 = max(x, 0), max(y, 0), min(x + w, base.shape[1]), min(y + h, base.shape[0])
+    if x1 <= x0 or y1 <= y0:
+        return
+    sub = s[y0 - y : y1 - y, x0 - x : x1 - x]
+    a = sub[..., 3:4] / 255 * alpha
+    region = base[y0:y1, x0:x1]
+    base[y0:y1, x0:x1] = region * (1 - a) + region * (sub[..., :3] / 255) * a
+    im.paste(Image.fromarray(np.clip(base, 0, 255).astype(np.uint8)))
+
+
+def _degrade(arr: np.ndarray, paper: str, rng: random.Random) -> tuple[np.ndarray, np.ndarray]:
+    nrng = np.random.default_rng(rng.randint(0, 2**31))
+    img = arr.astype(np.float32)
+    h, w = img.shape[:2]
+    if paper == "kraft":
+        # 牛皮纸：整体偏黄褐，低频明暗起伏，加纤维噪点；墨迹略褪色
+        low = cv2.resize(nrng.normal(0, 1, (8, 6)).astype(np.float32), (w, h), interpolation=cv2.INTER_CUBIC)
+        tint = np.array([222, 200, 164], np.float32) + low[..., None] * 7
+        img = 30 + img / 255 * (tint - 30)
+        img += nrng.normal(0, 5, (h, w, 1)).astype(np.float32)
+    else:
+        img = 8 + img * (244 / 255)
+        img += nrng.normal(0, 3.5, (h, w, 1)).astype(np.float32)
+    img = cv2.GaussianBlur(np.clip(img, 0, 255), (0, 0), 0.7)
+    ang = rng.uniform(-0.6, 0.6)
+    M = cv2.getRotationMatrix2D((w / 2, h / 2), ang, 1.0)
+    border = tuple(float(v) for v in np.median(img.reshape(-1, 3)[:: 97], axis=0))
+    img = cv2.warpAffine(img, M, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=border)
+    return np.clip(img, 0, 255).astype(np.uint8), M
+
+
+def _affine_box(b, M) -> list[float]:
+    x0, y0, x1, y1 = b
+    pts = np.array([[x0, y0, 1], [x1, y0, 1], [x0, y1, 1], [x1, y1, 1]], np.float32) @ M.T
+    return [float(pts[:, 0].min()), float(pts[:, 1].min()), float(pts[:, 0].max()), float(pts[:, 1].max())]
+

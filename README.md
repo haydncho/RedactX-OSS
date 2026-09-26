@@ -85,7 +85,23 @@ service/          FastAPI 接口与任务管理
 web/              Web 页（纯静态，不加载外部资源）
 deploy/container/ Apple container 镜像与启动脚本
 tests/            单元测试（全部使用虚构数据）
+bench/            合成评估集：生成虚构病案并统计遮全率、误遮与耗时
 ```
+
+## 评估
+
+`bench/` 生成全部为虚构数据的合成病案，并在上面跑完整流水线打分。需要 macOS 自带的中文字体（其他系统可用 `REDACTX_BENCH_FONT` 指定一个 TrueType 中文字体）。
+
+```bash
+uv pip install --python .venv/bin/python -e ".[dev,bench]"
+.venv/bin/python -m bench.make --out bench/out --cases 3      # 生成：每种形态 3 份，每份 4 页
+.venv/bin/python -m bench.evaluate --data bench/out            # 评估：结果写入 bench/out/results/
+.venv/bin/python -m bench.show bench/out/docs/scan-001.pdf --page 1 --out page1.png   # 查看标准答案框
+```
+
+五种形态：`text` 系统导出（文字层、电子签名小图、跨页重复 Logo），`scan` 白纸扫描 200 DPI（手写姓名与签名、红章压字、轻微歪斜），`kraft` 牛皮纸扫描 300 DPI，`rotated` 横放扫描（内容旋转 90°），`mixed` 文字层页与扫描页混排。
+标准答案分“应遮”（姓名、医护、机构、证件号、电话、医疗标识号、地址、签名、印章、Logo、二维码，以及只在正文出现的人名）与“应留”（日期、诊断与编码、检验结果、性别、年龄、费用、临床照片）。
+指标：应遮项被覆盖 ≥ 80% 记为遮全；应留项被覆盖超过 15% 记为误遮；与任何应遮项都不重叠的遮盖区域记为多遮。
 
 ## 已知限制（第一版）
 

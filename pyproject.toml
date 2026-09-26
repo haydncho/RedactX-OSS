@@ -23,6 +23,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+# 合成评估集（bench/）：字体子集化
+bench = ["fonttools>=4.50"]
 
 [tool.setuptools]
 packages = ["redactx", "redactx.detect", "service"]
@@ -30,3 +32,7 @@ packages = ["redactx", "redactx.detect", "service"]
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+# 测试会导入仓库根目录下的 bench/（评估工具不随包安装）
+pythonpath = ["."]
