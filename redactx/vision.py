@@ -262,6 +262,17 @@ def _line_angle(q: np.ndarray) -> float:
     return float(np.degrees(np.arctan2(q[1][1] - q[0][1], q[1][0] - q[0][0])))
 
 
+def _reddish_strokes(img: np.ndarray, light: np.ndarray, q: np.ndarray) -> bool:
+    """四边形内浅色笔画偏红：是印章环形文字（章上常刻院名），不是水印，交给印章检测。"""
+    m = np.zeros(light.shape, np.uint8)
+    cv2.fillPoly(m, [np.round(q).astype(np.int32)], 1)
+    px = img[(m > 0) & light].astype(np.int16)
+    if len(px) < 20:
+        return False
+    med = np.median(px, axis=0)
+    return bool(med[0] - max(med[1], med[2]) >= 18)
+
+
 def _qrect(q: np.ndarray) -> Rect:
     return (float(q[:, 0].min()), float(q[:, 1].min()), float(q[:, 0].max()), float(q[:, 1].max()))
 
@@ -300,14 +311,7 @@ def watermarks(img: np.ndarray, names: list[str], is_org, all_slanted: bool = Fa
     layer = cv2.cvtColor(np.where(light, 70, 255).astype(np.uint8), cv2.COLOR_GRAY2RGB)
 
     def reddish(q) -> bool:
-        """四边形内浅色笔画偏红：是印章环形文字（章上常刻院名），不是水印，交给印章检测。"""
-        m = np.zeros(light.shape, np.uint8)
-        cv2.fillPoly(m, [np.round(q).astype(np.int32)], 1)
-        px = img[(m > 0) & light].astype(np.int16)
-        if len(px) < 20:
-            return False
-        med = np.median(px, axis=0)
-        return med[0] - max(med[1], med[2]) >= 18
+        return _reddish_strokes(img, light, q)
 
     def accept(lines, slanted_by_construction: bool = False) -> list[Watermark]:
         out = []

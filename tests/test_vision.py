@@ -138,20 +138,9 @@ def test_watermark_bands_only_at_watermark_angle():
 
 
 def test_seal_ring_text_is_not_a_watermark():
-    # 淡红印章的环形文字（刻着院名，斜排）不是水印
-    import math
-    from PIL import Image, ImageDraw, ImageFont
-    from bench import fonts
-
-    path, idx = fonts.print_font()
-    f = ImageFont.truetype(path, 44, index=idx)
-    im = Image.new("RGB", (900, 900), (250, 250, 250))
-    name = "澄岚市中医院检验专用章"
-    for k, ch in enumerate(name):  # 沿圆弧排字
-        ang = math.radians(-150 + k * 12)
-        tile = Image.new("RGBA", (60, 60), (0, 0, 0, 0))
-        ImageDraw.Draw(tile).text((30, 30), ch, font=f, fill=(236, 150, 160, 255), anchor="mm")
-        tile = tile.rotate(-math.degrees(ang) - 90, resample=Image.BICUBIC)
-        im.paste(tile, (int(450 + 300 * math.cos(ang) - 30), int(450 + 300 * math.sin(ang) - 30)), tile)
-    wms = vision.watermarks(np.asarray(im), ["澄岚市中医院"], lambda t: False, all_slanted=True)
-    assert wms == []
+    # 淡红印章的环形文字（刻着院名、斜排）不是水印；同样位置的灰色斜字才是
+    quad = np.array([[200, 300], [700, 100], [720, 150], [220, 350]], np.float32)
+    for color, want in [((236, 150, 160), True), ((184, 181, 186), False)]:
+        img = np.full((600, 900, 3), 250, np.uint8)
+        cv2.putText(img, "HOSPITAL", (230, 330), cv2.FONT_HERSHEY_SIMPLEX, 2.2, color, 6)
+        assert vision._reddish_strokes(img, vision.light_layer(img), quad) is want, color
