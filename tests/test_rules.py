@@ -173,3 +173,17 @@ def test_role_word_plus_doctor_with_colon():
     assert [f[1] for f in fields] == ["医生"]
     # 正文里的“医生”（无冒号）不受影响
     assert anchor(PageData(0, 1000, 1000, lines=[_ocr_line("由谈话医生告知病情")]), {"STAFF"}) == ([], [])
+
+
+def test_form_words_are_not_names():
+    # “执行时间”“评估者”里的“执行”“评估”、“谈话”等表单用词不是姓名（否则当成种子会在全文误遮）
+    for text in ["上级医师 执行时间", "医师签名 评估", "护士 谈话", "医师 告知"]:
+        ln = _line(text, gaps={text.index(" "): 60})
+        hits, _ = anchor(PageData(0, 1000, 1000, lines=[ln]), {"STAFF", "SIGNATURE"})
+        assert hits == [], text
+    # 5 个字的取值不是姓名，复姓与带“·”的除外
+    assert anchor(PageData(0, 1000, 1000, lines=[_line("医师：查看患者后")]), {"STAFF"})[0] == []
+    assert anchor(PageData(0, 1000, 1000, lines=[_line("医师：如期完成手")]), {"STAFF"})[0] == []
+    for name in ["欧阳娜娜子", "阿依·古丽"]:
+        ln = _line("医师：" + name)
+        assert [ln.text[h.start:h.end] for h in anchor(PageData(0, 1000, 1000, lines=[ln]), {"STAFF"})[0]] == [name], name
