@@ -180,6 +180,62 @@ def date_signatures(page: PageData) -> list[tuple[str, str, Rect, Rect | None]]:
     return fields
 
 
+def _is_label_line(text: str) -> bool:
+    """整行只是一个字段名（可带冒号），或以“字段名：”开头。“患者夜间睡眠尚可”这样以通用词开头的正文不算。"""
+    m = _match_at(text, 0, LABELS, _LABEL_MAX) or _match_at(text, 0, STOP_WORDS, _STOP_MAX)
+    if not m:
+        return False
+    rest = text[len(m) :]
+    return rest.strip("：: ") in ("", *SIGN_SUFFIX) or rest[:1] in SEPS or any(rest.startswith(s) and rest[len(s) : len(s) + 1] in SEPS for s in SIGN_SUFFIX)
+
+
+def table_signatures(page: PageData) -> list[tuple[str, str, Rect, Rect | None]]:
+    """表格里的签名列：“护士签名”“执行者签名”等作为表头单元格（同一行还有“日期”“时间”等别的表头）时，
+    表格每一行在这一列的格子都是签名填写区，交给墨迹检查。行的位置取自其他列（时间、记录内容）——
+    手写签名常常连一个字都认不出来，不能靠本列的识别结果；行距突然拉大处（表格下方的落款、页脚）表格结束。"""
+    fields: list[tuple[str, str, Rect, Rect | None]] = []
+    for lh in find_labels(page):
+        if "签" not in lh.label:
+            continue
+        line = page.lines[lh.line]
+        if len(line.text.strip("：: ")) != lh.end - lh.start:
+            continue  # 表头单元格里只有这个标签
+        x0, y0, x1, y1 = line.box
+        h = max(y1 - y0, 1)
+        cy = (y0 + y1) / 2
+        heads = [ln for ln in page.lines if ln is not line and ln.chars and abs((ln.box[1] + ln.box[3]) / 2 - cy) < 0.6 * h and len(ln.text) <= 12]
+        if not heads:
+            continue
+        left = [b.box[2] for b in heads if b.box[2] <= x0]
+        right = [b.box[0] for b in heads if b.box[0] >= x1]
+        col_l = (max(left) + x0) / 2 if left else x0 - 2 * h
+        col_r = min(right) - 0.3 * h if right else min(page.width, x1 + 4 * (x1 - x0))
+        table_l = min(b.box[0] for b in heads + [line]) - h
+        cx = lambda ln: (ln.box[0] + ln.box[2]) / 2  # noqa: E731
+        # 其他列里的表格内容；以字段名开头的（表格下方的“护士长签名：”之类）不算
+        others = sorted((ln for ln in page.lines if ln.chars and ln.box[1] >= y1 - 0.2 * h and (table_l <= cx(ln) < col_l or col_r < cx(ln))
+                         and not _is_label_line(ln.text)),
+                        key=lambda ln: ln.box[1])
+        rows: list[list[Line]] = []
+        for ln in others:
+            if rows and ln.box[1] < max(o.box[3] for o in rows[-1]) - 0.3 * h:
+                rows[-1].append(ln)
+            else:
+                rows.append([ln])
+        tops = [min(o.box[1] for o in r) for r in rows]
+        pitch = sorted(b - a for a, b in zip(tops, tops[1:]))[len(tops) // 2 - 1] if len(tops) >= 3 else 3 * h
+        prev = y1
+        for r, top in zip(rows, tops):
+            if top - prev > max(1.8 * pitch, 3 * h):
+                break  # 行距突然拉大：表格结束
+            bot = max(o.box[3] for o in r)
+            # 左边不越过同一行里其他列的文字（记录内容可能写得很长）
+            l = max([col_l] + [o.box[2] + 0.3 * h for o in r if o.box[2] <= x0 + 0.5 * h])
+            fields.append(("SIGNATURE", lh.label, (l, top - 0.35 * h, col_r, bot + 0.35 * h), None))
+            prev = top
+    return fields
+
+
 def _overlaps(a: Rect, b: Rect) -> bool:
     return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
 

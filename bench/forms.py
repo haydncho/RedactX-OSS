@@ -404,7 +404,72 @@ def consent(c: Case, logo_img) -> Page:
     return p
 
 
+def nursing_record(c: Case, logo_img) -> Page:
+    """护理记录单（表格，手写）：只用于加难的扫描形态。表格格子里的护士签名、一格两人签名、
+    手写护理记录里只出现一次的家属姓名、盖在护士长签名上的科室章。"""
+    rng = random.Random("nurse:" + c.patient)  # 独立的随机源：不改变 c.rng，前 6 页的内容保持不变
+    used = {c.patient, c.contact, c.relative_in_prose, *c.staff.values()}
+    nurses = [_fake_name(rng, used) for _ in range(4)]
+    family = _fake_name(rng, used)
+    p = Page("护理记录单")
+    _header(p, c, "一般护理记录单", logo_img)
+    y = 112
+    p.field(40, y, "姓名", c.patient, truth=("PERSON", "redact"), sep="：", gap=1)
+    p.field(170, y, "科别", c.dept, sep="：", gap=1)
+    p.field(300, y, "床号", c.bed, truth=("MEDICAL_ID", "redact"), sep="：", gap=1)
+    p.field(390, y, "住院号", c.inpatient_no, truth=("MEDICAL_ID", "redact"), sep="：", gap=1)
+    # 表格：日期 | 时间 | 病情观察及护理措施 | 护士签名
+    cols = [40, 100, 180, 440, p.w - 40]
+    top, rh = 140, 40
+    rows = [
+        ("08:00", "体温36.8℃，精神可，遵医嘱予胰岛素皮下注射。", [nurses[0]]),
+        ("10:30", f"患者女儿{family}陪护，已告知防跌倒注意事项。", [nurses[0]]),
+        ("14:00", "静脉输液通畅，穿刺处无红肿，双人核对用药。", [nurses[1], nurses[2]]),
+        ("16:30", "测指尖血糖8.6mmol/L，已报告医师。", [nurses[1]]),
+        ("20:00", "患者夜间睡眠尚可，无特殊不适。", [nurses[3]]),
+    ]
+    for k, head in enumerate(["日期", "时间", "病情观察及护理措施", "护士签名"]):
+        p.text(cols[k] + 6, top + 12, head, 10, bold=True)
+    for k in range(len(rows) + 2):
+        p.line(cols[0], top + k * rh, cols[-1], top + k * rh, 0.5)
+    for x in cols:
+        p.line(x, top, x, top + (len(rows) + 1) * rh, 0.5)
+    day = fmt_date(c.admit + timedelta(days=1)).replace("年", ".").replace("月", ".").rstrip("日")
+    for r, (tm, note, signers) in enumerate(rows):
+        y = top + (r + 1) * rh + 13
+        if r == 0:
+            p.hand(cols[0] + 4, y, day[5:], size=9, truth=("DATE", "keep"))
+        p.hand(cols[1] + 4, y, tm, size=9, truth=("DATE", "keep"))
+        if family in note:
+            a = note.index(family)
+            x = p.hand(cols[2] + 4, y, note[:a], size=8)
+            x = p.hand(x - 6, y, family, size=8, truth=("PERSON_PROSE", "redact"))
+            p.hand(x - 6, y, note[a + len(family):], size=8)
+        else:
+            p.hand(cols[2] + 4, y, note, size=8)
+        # 双人核对：两位护士签在同一格，中间用“/”隔开
+        p.hand(cols[3] + 4, y, "/".join(signers), size=9, truth=("SIGNATURE", "redact"), esign=True)
+    y = top + (len(rows) + 1) * rh + 40
+    # 护士长签名，上面压着科室护理单元的章
+    x = p.field(300, y, "护士长签名", _fake_name(rng, used), truth=("SIGNATURE", "redact"), hand=True, esign=True, sep="：", gap=4)
+    p.seal(x - 20, y + 4, 34, f"{c.dept}护理单元")
+    _footer(p, c, 7)
+    return p
+
+
+def _fake_name(rng, used: set[str]) -> str:
+    from .fakes import GIVEN, SURNAMES
+
+    while True:
+        n = rng.choice(SURNAMES) + "".join(rng.choice(GIVEN) for _ in range(rng.choice([1, 2, 2])))
+        if n not in used:
+            used.add(n)
+            return n
+
+
 def case_pages(c: Case) -> list[Page]:
-    """前 4 页各形态通用；第 5、6 页（手写病程、手写知情同意书）只有扫描类形态会用到（见 make.VARIANTS）。"""
+    """前 4 页各形态通用；第 5、6 页（手写病程、手写知情同意书）只有扫描类形态会用到，
+    第 7 页（护理记录单）只有加难的扫描形态会用到（见 make.VARIANTS）。"""
     lg = logo(c.hospital)
-    return [front_page(c, lg), lab_report(c, lg, c.rng), progress_note(c, lg), endoscopy(c, lg, c.rng), daily_note(c, lg), consent(c, lg)]
+    return [front_page(c, lg), lab_report(c, lg, c.rng), progress_note(c, lg), endoscopy(c, lg, c.rng), daily_note(c, lg), consent(c, lg),
+            nursing_record(c, lg)]
