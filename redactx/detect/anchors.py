@@ -29,9 +29,12 @@ RE_ALNUM = re.compile(r"[0-9A-Za-z\-]+")
 # 找不到可识别取值时，填写区的宽度（以字高为单位）。签名栏一直延伸到本行下一个字段，签名之后的笔迹都遮盖
 FIELD_WIDTH = {"PERSON": 6, "STAFF": 6, "ORG": 16, "ADDRESS": 20, "ID_CARD": 14, "PHONE": 10, "MEDICAL_ID": 8}
 SIGN_WIDTH = 24
-# 标签与取值之间超过这个距离（字高），取值多半不是这个标签的：可搜索 PDF 的文字层里没有手写字，
-# “患者 （手写姓名） 已阅读……”在文字层里是“患者……已阅读……”，不能把后面的打印字当成姓名
+# 标签与取值之间超过这个距离（字高）时，取值须是独立的一小段才当作姓名：可搜索 PDF 的文字层里没有手写字，
+# “患者 （手写姓名） 已阅读……”在文字层里是“患者……已阅读……”，不能把后面的一句话当成姓名
 FAR_VALUE = 2.5
+# 超过这个距离（字高）的取值不再属于这个标签，即使是独立的短词：多半是同一行另一个字段的内容，
+# 若当成姓名，会作为种子在全文里被大量误追踪（实测一个常用词被追踪了 157 次）
+FAR_NAME_MAX = 10
 
 
 @dataclass
@@ -195,6 +198,21 @@ def _surname_start(value: str) -> bool:
     return bool(value) and (value[0] in SURNAMES or value[:2] in COMPOUND_SURNAMES)
 
 
+def _name_like(line: Line, k: int, e: int) -> bool:
+    """离标签较远的取值像姓名：独立的一小段，或首字是常见姓氏。两者都不满足的（如“已阅读并理解……”）是正文。"""
+    return _standalone(line, k, e) or _surname_start(line.text[k:e])
+
+
+def _standalone(line: Line, k: int, e: int) -> bool:
+    """[k, e) 是独立的一小段（2–4 个字，后面是行尾、标点、字段名或明显空白），而不是一句话的开头。
+    离标签较远的取值只有这样才当作姓名：姓名常与标签隔开；“已阅读并理解上述内容”之类是正文。
+    不用姓氏表判断：医生的姓不在常见姓氏表里时会漏掉整份文档的全文追踪。"""
+    text = line.text
+    if not 2 <= e - k <= 4:
+        return False
+    return e == len(text) or text[e] in PUNCT_PRE or _gap(line, e - 1, e) > 1.0 or bool(_match_at(text, e, STOP_WORDS, _STOP_MAX))
+
+
 def _looks_printed(text: str, chars) -> bool:
     """成句的打印文字：至少 4 个字且识别置信度高（手写签名常被识别成一两个低置信度的字）。"""
     return len(text) >= 4 and sum(c.score for c in chars) / max(len(chars), 1) >= 0.9
@@ -286,7 +304,8 @@ def anchor(page: PageData, enabled: set[str]) -> tuple[list[Hit], list[tuple[str
         if _starts_with_label(line.text, k):
             value = ""
         limit = None  # 填写区右边界：远处成句的打印文字
-        if value and kind in ("PERSON", "STAFF") and (line.chars[k].box[0] - lab_x1) / h > FAR_VALUE and not _surname_start(value):
+        dist = (line.chars[k].box[0] - lab_x1) / h if value else 0.0
+        if value and kind in ("PERSON", "STAFF") and dist > FAR_VALUE and (dist > FAR_NAME_MAX or not _name_like(line, k, e)):
             if _looks_printed(line.text[k:], line.chars[k:]):
                 limit = line.chars[k].box[0] - 0.3 * h
             value = ""
@@ -303,8 +322,8 @@ def anchor(page: PageData, enabled: set[str]) -> tuple[list[Hit], list[tuple[str
             nl = page.lines[nb[0]]
             k2, e2 = _take_value(nl, 0, kind)
             v2 = "" if _starts_with_label(nl.text, k2) else nl.text[k2:e2]
-            far = (nl.box[0] - lab_x1) / h > FAR_VALUE
-            if far and kind in ("PERSON", "STAFF") and not _surname_start(v2):
+            dist2 = (nl.box[0] - lab_x1) / h
+            if dist2 > FAR_VALUE and kind in ("PERSON", "STAFF") and (dist2 > FAR_NAME_MAX or not _name_like(nl, k2, e2)):
                 # 远处的邻行不像姓名：若是成句的打印文字，它就是填写区的右边界
                 if _looks_printed(nl.text, nl.chars):
                     limit = nl.box[0] - 0.3 * h

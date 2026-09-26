@@ -99,3 +99,11 @@ def test_grow_strokes_takes_signature_tail_but_not_neighbours():
     assert x1 >= 555  # 拖尾整体纳入
     assert x1 < 600  # 不吞红章
     assert y0 > 160  # 不吞上一行日期
+
+
+def test_faded_name_stamp_detected():
+    # 褪色的淡红名章：红色优势约 25、偏橙，但很亮
+    img = np.full((600, 600, 3), 245, np.uint8)
+    cv2.rectangle(img, (200, 200), (300, 290), (222, 197, 190), 6)
+    cv2.putText(img, "AB", (215, 265), cv2.FONT_HERSHEY_SIMPLEX, 1.4, (222, 197, 190), 5)
+    assert len(vision.red_seals(img, DPI)) == 1

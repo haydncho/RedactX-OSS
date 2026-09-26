@@ -18,7 +18,10 @@ def red_seals(img: np.ndarray, dpi: int) -> list[Rect]:
     # 淡粉色印章的红色优势也不大（约 30），但偏品红（B ≥ G），据此区分
     rgb = img.astype(np.int16)
     dominance = rgb[..., 0] - np.maximum(rgb[..., 1], rgb[..., 2])
-    reddish = (dominance >= 35) | ((dominance >= 22) & (rgb[..., 2] >= rgb[..., 1]))
+    # 褪色的淡红名章（约 220,196,191）红色优势只有 20 出头且偏橙，但很亮；墨迹边缘暗（亮度 90–110），据亮度区分。
+    # 高饱和的品红 / 紫色也算（紫色印章）
+    reddish = (dominance >= 35) | ((dominance >= 22) & (rgb[..., 2] >= rgb[..., 1])) | ((dominance >= 18) & (v >= 150)) \
+        | ((h >= 155) & (s >= 80) & (v >= 110))
     red = (((h <= 10) | (h >= 155)) & (s >= 25) & (v >= 90) & reddish).astype(np.uint8) * 255
     k = max(3, int(dpi / 40))
     closed = cv2.morphologyEx(red, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k * 3, k * 3)))
