@@ -1,6 +1,6 @@
 [project]
 name = "redactx"
-version = "0.1.4"
+version = "0.1.5"
 description = "锐消 RedactX：病案等文档的本地脱敏服务"
 readme = "README.md"
 license = {text = "Apache-2.0"}
