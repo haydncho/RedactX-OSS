@@ -23,6 +23,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+# 合成评估集（bench/）：字体子集化
+bench = ["fonttools>=4.50"]
 
 [tool.setuptools]
 packages = ["redactx", "redactx.detect", "service"]

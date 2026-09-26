@@ -3,6 +3,7 @@ example/
 data/
 data-container/
 protype/
+bench/out/
 *.pdf
 *.tif
 *.tiff
@@ -15,5 +16,9 @@ protype/
 .venv/
 __pycache__/
 *.pyc
+*.egg-info/
 .pytest_cache/
 .DS_Store
+
+# 内部交接文档（含样例描述与私有链接），不公开
+handoff.md

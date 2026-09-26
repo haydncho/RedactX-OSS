@@ -19,5 +19,8 @@ RedactX 运行时依赖以下开源组件。它们各自的许可证以其官方
 | python-multipart | 文件上传解析 | Apache-2.0 |
 | LibreOffice（外部程序，可选） | Word / WPS 等文档转 PDF | MPL-2.0 |
 | Noto Sans CJK（容器镜像内） | 打码标签字体 | OFL-1.1 |
+| fontTools（仅评估工具 `bench/`） | 合成 PDF 的字体子集化 | MIT |
+
+评估工具生成合成病案时调用本机系统字体（macOS 自带的宋体、黑体与手写风格字体），字体文件不随仓库分发，生成的 PDF 只在本地使用、不入库。
 
 刻意未使用的组件：PyMuPDF（AGPL-3.0）、Ultralytics YOLO（AGPL-3.0）、InsightFace 预训练模型（非商用）、MinIO（AGPL-3.0）。新增依赖前请先确认许可证与 Apache-2.0 兼容。
