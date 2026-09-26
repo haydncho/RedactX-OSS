@@ -65,7 +65,7 @@ deploy/container/run.sh          # 默认端口 8090、容器名 redactx-oss；�
   "mode": "strict",
   "label_text": "type",
   "dpi": 200,
-  "verify": false
+  "verify": "auto"
 }
 ```
 
@@ -124,14 +124,14 @@ uv pip install --python .venv/bin/python -e ".[dev,bench]"
 .venv/bin/python -m bench.perf --out bench/perf --pages 100   # 结果写入 bench/perf/perf.md
 ```
 
-Apple M4、16 GB，本机直接运行（纯 CPU，默认选项）：
+Apple M4、16 GB，本机直接运行（纯 CPU，默认选项：扫描页做出厂自检，文字层页不做）：
 
 | 文档 | 页数 | 总耗时 | 每页 | 首页 | 内存峰值 |
 |---|---|---|---|---|---|
-| 系统导出（文字层） | 100 | 16.6 秒 | 0.17 秒 | 0.2 秒 | 1.5 GB |
-| 白纸扫描 200 DPI（含手写页） | 102 | 156 秒 | 1.5 秒 | 1.3 秒 | 2.1 GB |
+| 系统导出（文字层） | 100 | 18 秒 | 0.18 秒 | 0.6 秒 | 1.4 GB |
+| 白纸扫描 200 DPI（含手写页） | 102 | 261 秒 | 2.6 秒 | 1.6 秒 | 1.9 GB |
 
-验收目标（留有余量，容器内 6 核 6 GB 同样适用）：
+关闭自检时扫描件约 1.5 秒/页；文字层全部页自检约 1.2 秒/页。验收目标（容器内 6 核 6 GB 同样适用）：
 
 | 指标 | 文字层 | 扫描件 |
 |---|---|---|

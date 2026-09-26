@@ -82,7 +82,8 @@ def parse_options(raw: str | None, password: str | None) -> Options:
         o.label_text = d["label_text"]
     if d.get("dpi") in (150, 200, 300):
         o.dpi = d["dpi"]
-    o.verify = bool(d.get("verify", False))
+    v = d.get("verify", "auto")
+    o.verify = "auto" if v == "auto" else bool(v)
     o.password = password or None
     return o
 

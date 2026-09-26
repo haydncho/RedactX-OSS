@@ -98,10 +98,14 @@
           <button type="button" data-v="300" role="radio">300</button>
         </div>
       </div>
-      <label class="opt-row switch-row" for="opt-verify">
-        <span class="opt-label">出厂自检<small>对输出再识别一遍，耗时约翻倍</small></span>
-        <input type="checkbox" id="opt-verify" class="switch">
-      </label>
+      <div class="opt-row">
+        <span class="opt-label">出厂自检<small>对输出再识别一遍，补打遗漏</small></span>
+        <div class="seg" id="seg-verify" role="radiogroup" aria-label="出厂自检">
+          <button type="button" data-v="auto" role="radio" title="只自检扫描页；文字层页自检要多花数倍时间">扫描页</button>
+          <button type="button" data-v="on" role="radio" title="所有页都自检">全部</button>
+          <button type="button" data-v="off" role="radio">关闭</button>
+        </div>
+      </div>
       <div class="opt-row">
         <label class="opt-label" for="opt-retention">结果保留</label>
         <select id="opt-retention">

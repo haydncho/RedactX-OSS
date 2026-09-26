@@ -79,7 +79,7 @@
           <tr><td><code>mode</code></td><td>string</td><td><code>strict</code></td><td><code>strict</code> 严格（遮盖框外扩更多）或 <code>balanced</code> 平衡</td></tr>
           <tr><td><code>label_text</code></td><td>string</td><td><code>type</code></td><td>浅色标签上写类型（<code>type</code>）或一致性代号（<code>alias</code>，如“姓名1”）</td></tr>
           <tr><td><code>dpi</code></td><td>number</td><td><code>200</code></td><td>渲染分辨率：150、200 或 300</td></tr>
-          <tr><td><code>verify</code></td><td>boolean</td><td><code>false</code></td><td>出厂自检：打码后再识别一遍，补打遗漏</td></tr>
+          <tr><td><code>verify</code></td><td>string | boolean</td><td><code>"auto"</code></td><td>出厂自检：打码后再识别一遍，补打遗漏。<code>"auto"</code> 只自检扫描页（文字层页自检要多花数倍时间），<code>true</code> 全部页，<code>false</code> 关闭</td></tr>
         </tbody>
       </table>
       <pre class="code"><code>{"entities": ["PERSON", "STAFF", "ORG", "ID_CARD", "PHONE", "MEDICAL_ID", "SIGNATURE", "SEAL"],

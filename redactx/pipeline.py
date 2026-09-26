@@ -42,7 +42,7 @@ class Options:
     mode: str = "strict"  # strict | balanced
     label_text: str = "type"  # type：标签写类型；alias：写一致性代号
     dpi: int = 200
-    verify: bool = False
+    verify: bool | str = "auto"  # auto：只自检扫描页（文字层页本来不做识别，自检要多花数倍时间）；True / False：全部开或关
     password: str | None = None
 
     def style_for(self, code: str) -> str:
@@ -358,7 +358,7 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
     # ---------- 第二遍：传播、打码、自检 ----------
     aliases = Aliases()
     report_items = []
-    residual_total = 0
+    residual_total = verified_pages = 0
     page_meta = []
     max_font = int(opts.dpi * 0.13)
     for img, _pd in iter_pages(src, doc.kind, opts.dpi, opts.password):
@@ -398,12 +398,15 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
 
         regions += [Region("ORG" if wm.org else "WATERMARK", "watermark", i, wm.rect, style="watermark") for wm in page_wm[i]] + band_regions
         residual = 0
-        if opts.verify:
+        if opts.verify is True or (opts.verify == "auto" and pd.text_source != "text"):
+            verified_pages += 1
             progress(0.62 + 0.36 * (i + 0.5) / n, f"自检第 {i + 1}/{n} 页")
             vlines = ocr.ocr_page(img, 0)
             vpd = PageData(index=i, width=pd.width, height=pd.height, lines=vlines, rotation=pd.rotation)
             extra = [h for h in engine.page_hits(vpd, enabled, opts.custom_words)[0] if h.source in ("rule", "custom")]
             extra += engine.propagate(vpd, seeds, extra)
+            # 斜向文字是压在照片上、没能消除的水印（已知限制）；按外接矩形补打会盖掉一大块照片
+            extra = [h for h in extra if not vision._is_slanted(vpd.lines[h.line].angle)]
             for h in extra:
                 rect = _hits_to_rect(vpd, h, True)
                 if rect:
@@ -445,7 +448,7 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
         "counts": dict(counts),
         "items": report_items,
         "page_meta": page_meta,
-        "verification": {"enabled": opts.verify, "residual_hits": residual_total, "passed": True},
+        "verification": {"enabled": verified_pages > 0, "mode": opts.verify, "pages": verified_pages, "residual_hits": residual_total, "passed": True},
         "watermark_objects": wm_objects,  # 从 PDF 结构里直接删除的水印对象数
         "options": {
             "entities": sorted(enabled),

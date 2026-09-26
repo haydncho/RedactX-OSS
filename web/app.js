@@ -41,7 +41,7 @@
     mode: "strict",
     label_text: "type",
     dpi: 200,
-    verify: false,
+    verify: "auto",        // auto 只自检扫描页 | on | off
     custom: "",
     retention: "24",
   };
@@ -201,7 +201,7 @@
       mode: state.mode,
       label_text: state.label_text,
       dpi: Number(state.dpi),
-      verify: $("#opt-verify").checked,
+      verify: state.verify === "auto" ? "auto" : state.verify === "on",
     };
   }
 
@@ -321,7 +321,8 @@
     if (!entries.length) ul.append(el("li", { text: "未发现需要遮盖的内容" }));
     const v = report.verification;
     const wmObj = report.watermark_objects ? `；已从 PDF 结构中删除水印对象 ${report.watermark_objects} 个` : "";
-    $("#sum-foot").textContent = (v?.enabled ? `出厂自检：补打 ${v.residual_hits} 处` : "未开启出厂自检") + wmObj;
+    const vPages = v?.pages != null ? `（${v.pages} 页）` : "";
+    $("#sum-foot").textContent = (v?.enabled ? `出厂自检${vPages}：补打 ${v.residual_hits} 处` : v?.mode === "auto" ? "无扫描页，未自检" : "未开启出厂自检") + wmObj;
   }
 
   function renderThumbs() {
@@ -559,11 +560,12 @@
     renderPresets();
     renderEntities();
     $("#custom-words").value = state.custom || "";
-    $("#opt-verify").checked = !!state.verify;
+    if (typeof state.verify !== "string") state.verify = state.verify ? "on" : "auto";  // 旧版存的是布尔值
     $("#opt-retention").value = state.retention || "24";
     bindSeg("#seg-mode", "mode");
     bindSeg("#seg-label", "label_text");
     bindSeg("#seg-dpi", "dpi", Number);
+    bindSeg("#seg-verify", "verify");
     state.view = state.view || "compare";
     bindSeg("#seg-view", "view");
     initHandle();
@@ -571,7 +573,6 @@
     refreshHistory();
 
     $("#custom-words").addEventListener("input", (e) => { state.custom = e.target.value; save(); });
-    $("#opt-verify").addEventListener("change", (e) => { state.verify = e.target.checked; save(); });
     $("#opt-retention").addEventListener("change", (e) => { state.retention = e.target.value; save(); });
     $("#sel-toggle").onclick = (ev) => {
       if (ev.currentTarget.dataset.all === "true") state.entities.clear();
