@@ -62,7 +62,9 @@ def find_labels(page: PageData) -> list[LabelHit]:
                 continue
             j = i + len(lab)
             pre_ok = i == 0 or text[i - 1] in PUNCT_PRE or text[i - 1].isdigit() or _gap(line, i - 1, i) > 0.4
-            post_ok = j == len(text) or text[j] in SOFT_SEPS or _gap(line, j - 1, j) > 0.4
+            # 通用词在行尾时没有冒号或间隔可作凭据（多为正文折行，如“……（患者”），只有独占一行才算标签
+            at_end = j == len(text) and (lab not in GENERIC or i == 0)
+            post_ok = at_end or (j < len(text) and (text[j] in SOFT_SEPS or _gap(line, j - 1, j) > 0.4))
             # 表单标签位于行首时，手写内容常紧贴标签，被 OCR 识别到同一行
             if not post_ok and i == 0 and lab not in GENERIC and line.source == "ocr":
                 post_ok = True
