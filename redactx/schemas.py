@@ -65,6 +65,7 @@ class Hit:
     start: int
     end: int
     value: str = ""  # 只在任务内存中使用，绝不写入报告和日志
+    seed: bool = True  # 能否作为种子在全文追踪：证据弱的姓名（通用词后无冒号）只遮本处
 
 
 @dataclass

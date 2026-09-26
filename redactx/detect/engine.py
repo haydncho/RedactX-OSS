@@ -39,7 +39,7 @@ def collect_seeds(all_hits: list[Hit], custom: list[str]) -> dict[str, str]:
     seeds: dict[str, str] = {}
     for h in all_hits:
         v = h.value
-        if h.type not in SEED_TYPES or not v:
+        if h.type not in SEED_TYPES or not v or not h.seed:
             continue
         if h.type in ("PERSON", "STAFF"):
             if not _CJK.match(v) or len(v) < 2 or v in STOP_WORDS:

@@ -187,3 +187,31 @@ def test_form_words_are_not_names():
     for name in ["欧阳娜娜子", "阿依·古丽"]:
         ln = _line("医师：" + name)
         assert [ln.text[h.start:h.end] for h in anchor(PageData(0, 1000, 1000, lines=[ln]), {"STAFF"})[0]] == [name], name
+
+
+def test_hospital_name_not_swallowing_sentence():
+    orgs = lambda t: [t[a:b] for k, a, b in rules.find(t) if k == "ORG"]
+    assert orgs("患者在我院住院期间如需转往上级医院") == []
+    assert orgs("本人同意在澄岚市第一人民医院接受手术治疗") == ["澄岚市第一人民医院"]
+    assert orgs("住院告知：患者须知澄岚市中医院规定") == ["澄岚市中医院"]
+    assert orgs("经治医生告知患者于澄岚市中医院就诊") == ["澄岚市中医院"]
+    # 名称里本身带“和”“向”“平”的不能截
+    assert orgs("北京协和医院") == ["北京协和医院"]
+    assert orgs("转入向阳医院治疗") == ["向阳医院"]
+
+
+def test_common_words_and_weak_names_do_not_seed():
+    from redactx.detect.engine import collect_seeds
+
+    # “患者信息”：“信”虽是常见姓氏，“信息”是常用词，不是姓名
+    assert anchor(PageData(0, 1000, 1000, lines=[_ocr_line("患者信息")]), {"PERSON"})[0] == []
+    # 通用词后无冒号认出的姓名只遮本处，不作全文追踪的种子；带冒号的照常作种子
+    weak, _ = anchor(PageData(0, 1000, 1000, lines=[_ocr_line("医生郑杰雪")]), {"STAFF"})
+    strong, _ = anchor(PageData(0, 1000, 1000, lines=[_ocr_line("医生：郑杰雪")]), {"STAFF"})
+    assert [h.value for h in weak] == ["郑杰雪"] and collect_seeds(weak, []) == {}
+    assert collect_seeds(strong, []) == {"郑杰雪": "STAFF"}
+
+
+def test_company_name_not_swallowing_sentence():
+    orgs = lambda t: [t[a:b] for k, a, b in rules.find(t) if k == "ORG"]
+    assert orgs("患者同意由澄岚晨星科技有限公司支付费用") == ["澄岚晨星科技有限公司"]
