@@ -8,6 +8,19 @@
 - 日期一律不遮盖（含出生日期、入出院日期、手写日期）。
 - 原件处理完立即删除；脱敏结果与预览按保留时长（默认 24 小时）自动清除。
 
+![结果对比：左侧选择脱敏字段与样式，中间拖动分隔线对比原件与脱敏后，右侧为遮盖统计](docs/images/screenshot-result.png)
+
+<details>
+<summary>更多截图：上传页、深色主题</summary>
+
+![上传页](docs/images/screenshot-upload.png)
+
+![深色主题](docs/images/screenshot-result-dark.png)
+
+</details>
+
+截图中的病案为评估集生成的合成数据，姓名、机构、号码均为虚构。
+
 ## 运行
 
 ### 方式一：本机直接运行（开发）
