@@ -37,37 +37,40 @@
 }
 /* 深色主题：theme.js 按用户选择或系统设置写入 data-theme */
 :root[data-theme="dark"] {
-  --canvas: #0a0a0a;
-  --canvas-soft: #000000;
-  --canvas-soft-2: #1a1a1a;
+  /* 层次：页面 < 卡片 < 悬停；边框与文字三档灰拉开差距 */
+  --canvas: #141416;
+  --canvas-soft: #0b0b0c;
+  --canvas-soft-2: #1f1f22;
   --ink: #ededed;
-  --body: #a1a1a1;
-  --mute: #8f8f8f;
-  --hairline: #262626;
-  --hairline-strong: #454545;
+  --body: #b3b3b8;
+  --mute: #88888f;
+  --hairline: #2a2a2e;
+  --hairline-strong: #46464c;
   --primary: #ededed;
-  --on-primary: #0a0a0a;
-  --link: #3291ff;
-  --link-deep: #52a8ff;
-  --link-soft: #0a2b53;
-  --error: #ff4d4d;
-  --error-deep: #ff6166;
-  --error-soft: #3a1214;
-  --warning-deep: #f5a623;
-  --warning-soft: #33250b;
-  --stage: #111111;
-  --ring: 0 0 0 1px rgba(255, 255, 255, .1);
-  --e2: var(--ring);
-  --e4: 0 8px 16px -4px rgba(0, 0, 0, .5), var(--ring);
-  --e5: 0 24px 32px -8px rgba(0, 0, 0, .6), var(--ring);
-  --c-people: #3291ff;
-  --c-org: #a472e8;
-  --c-numbers: #f5a623;
-  --c-medical: #ff4fa7;
-  --c-handwriting: #ff4d4d;
+  --on-primary: #0b0b0c;
+  --link: #4ea1ff;
+  --link-deep: #7ab8ff;
+  --link-soft: #10243d;
+  --error: #ff5c5c;
+  --error-deep: #ff7b7b;
+  --error-soft: #3b1618;
+  --warning-deep: #f5b544;
+  --warning-soft: #33260e;
+  --stage: #0f0f11;
+  --ring: 0 0 0 1px rgba(255, 255, 255, .08);
+  --e2: 0 1px 2px rgba(0, 0, 0, .45), var(--ring);
+  --e4: 0 8px 16px -4px rgba(0, 0, 0, .55), var(--ring);
+  --e5: 0 24px 32px -8px rgba(0, 0, 0, .65), var(--ring);
+  --c-people: #4ea1ff;
+  --c-org: #b18cf0;
+  --c-numbers: #f5b544;
+  --c-medical: #ff66b3;
+  --c-handwriting: #ff5c5c;
   --c-images: #50e3c2;
   color-scheme: dark;
 }
+/* 样式示意代表打印在纸上的效果，保持浅色；深色下降低亮度，不刺眼 */
+[data-theme="dark"] .sty, [data-theme="dark"] .swatch, [data-theme="dark"] .sheet { filter: brightness(.82) saturate(.9); }
 
 * { box-sizing: border-box; }
 /* 图标 */
@@ -324,6 +327,9 @@ dialog input { width: 100%; height: 40px; border: 0; box-shadow: 0 0 0 1px var(-
 .dlg-danger .hint { margin: 8px 0 24px; line-height: 20px; }
 .btn.danger-solid { background: var(--error); color: #fff; box-shadow: none; }
 .btn.danger-solid:hover { background: var(--error-deep); }
+/* 深色下红底白字要足够对比：填充用较深的红，文字类红色仍用较亮的 --error */
+[data-theme="dark"] .btn.danger-solid { background: #d93036; }
+[data-theme="dark"] .btn.danger-solid:hover { background: #e5484d; }
 
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(16px); background: var(--canvas); color: var(--ink); box-shadow: var(--e5); padding: 12px 16px; border-radius: 8px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
