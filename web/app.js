@@ -320,7 +320,8 @@
     }
     if (!entries.length) ul.append(el("li", { text: "未发现需要遮盖的内容" }));
     const v = report.verification;
-    $("#sum-foot").textContent = v?.enabled ? `出厂自检：补打 ${v.residual_hits} 处` : "未开启出厂自检";
+    const wmObj = report.watermark_objects ? `；已从 PDF 结构中删除水印对象 ${report.watermark_objects} 个` : "";
+    $("#sum-foot").textContent = (v?.enabled ? `出厂自检：补打 ${v.residual_hits} 处` : "未开启出厂自检") + wmObj;
   }
 
   function renderThumbs() {
