@@ -170,8 +170,8 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
 .style-pick::after { content: ""; position: absolute; right: 10px; top: 50%; width: 5px; height: 5px; border-right: 1.5px solid var(--mute); border-bottom: 1.5px solid var(--mute); transform: translateY(-70%) rotate(45deg); pointer-events: none; }
 
 /* 表单 */
-/* 最小高度：两行文字加上下内边距，往小拖也不会低于它 */
-textarea { display: block; width: 100%; resize: vertical; border: 0; box-shadow: 0 0 0 1px var(--hairline); border-radius: 6px; padding: 10px 12px; background: var(--canvas); font-size: 14px; line-height: 20px; min-height: calc(2 * 20px + 2 * 10px); }
+/* 高度：最少两行、最多八行文字（加上下内边距），拖动只在此范围内；词多时框内滚动 */
+textarea { display: block; width: 100%; resize: vertical; border: 0; box-shadow: 0 0 0 1px var(--hairline); border-radius: 6px; padding: 10px 12px; background: var(--canvas); font-size: 14px; line-height: 20px; min-height: calc(2 * 20px + 2 * 10px); max-height: calc(8 * 20px + 2 * 10px); overflow-y: auto; }
 textarea:focus, input[type=password]:focus, select:focus { outline: none; box-shadow: 0 0 0 1px var(--hairline-strong), 0 0 0 4px color-mix(in srgb, var(--link) 18%, transparent); }
 .opt-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 0; }
 .opt-label { font-size: 14px; display: grid; }
