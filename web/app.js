@@ -526,7 +526,7 @@
     if (c) { c.textContent = n; c.hidden = !n; }
   }
 
-  const SRC_NAME = { rule: "规则", anchor: "字段锚定", "anchor-field": "填写区", propagate: "全文追踪", custom: "自定义词", color: "颜色", detector: "检测", "image-object": "图片对象", repeat: "跨页重复", watermark: "水印消除", verify: "自检补打", manual: "人工添加" };
+  const SRC_NAME = { rule: "规则", anchor: "字段锚定", "anchor-field": "填写区", propagate: "全文追踪", custom: "自定义词", color: "颜色", detector: "检测", "image-object": "图片对象", repeat: "跨页重复", watermark: "水印消除", verify: "自检补打", manual: "人工添加", ner: "正文识别" };
   function renderPageItems() {
     const ul = $("#page-items"); ul.replaceChildren();
     const items = itemsOf(page);

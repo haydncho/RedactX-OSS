@@ -39,6 +39,9 @@ class Settings:
     sync_max_pages: int = 10
     sync_max_mb: int = 20
     font_path: str | None = field(default_factory=_find_font)
+    # 正文人名识别模型目录；不存在时该功能关闭
+    ner_dir: Path = field(default_factory=lambda: Path(os.environ.get("REDACTX_NER_DIR", Path(__file__).resolve().parent.parent / "models" / "ner")))
+    ner_threads: int = int(os.environ.get("REDACTX_NER_THREADS", "4"))
 
     def __post_init__(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)

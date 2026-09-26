@@ -28,6 +28,8 @@
 ```bash
 uv venv .venv --python 3.12
 uv pip install --python .venv/bin/python -e ".[dev]"
+# 可选：正文人名识别模型（一次性联网下载并导出，约 100 MB，写入 models/ner/）
+uv pip install --python .venv/bin/python -e ".[ner-export]" && .venv/bin/python deploy/ner_export.py
 .venv/bin/uvicorn service.app:app --host 127.0.0.1 --port 8000
 ```
 
@@ -39,7 +41,7 @@ uv pip install --python .venv/bin/python -e ".[dev]"
 deploy/container/run.sh          # 默认端口 8090、容器名 redactx-oss；也可 run.sh <端口>
 ```
 
-首次运行会构建镜像（需要下载 Python 基础镜像与依赖，一次性）。数据目录挂载在 `data-container/`，服务只绑定 127.0.0.1。
+首次运行会构建镜像（需要下载 Python 基础镜像与依赖，一次性）。构建前须先按方式一导出正文人名识别模型到 `models/ner/`，镜像会把它一并打包。数据目录挂载在 `data-container/`，服务只绑定 127.0.0.1。
 
 ## 接口
 
@@ -114,6 +116,7 @@ bench/            合成评估集：生成虚构病案并统计遮全率、误�
 uv pip install --python .venv/bin/python -e ".[dev,bench]"
 .venv/bin/python -m bench.make --out bench/out --cases 3      # 生成：每种形态 3 份，每份 4 页
 .venv/bin/python -m bench.evaluate --data bench/out            # 评估：结果写入 bench/out/results/
+.venv/bin/python -m bench.prose                                 # 正文人名（纯文本）：遮全率与误遮
 .venv/bin/python -m bench.show bench/out/docs/scan-001.pdf --page 1 --out page1.png   # 查看标准答案框
 ```
 
@@ -145,9 +148,14 @@ Apple M4、16 GB，本机直接运行（纯 CPU，默认选项：扫描页做出
 | 首页出结果 | ≤ 5 秒 | ≤ 5 秒 |
 | 内存峰值 | ≤ 4 GB | ≤ 4 GB |
 
+## 第三方模型
+
+- 文字识别：RapidOCR 随包附带的 PP-OCR 模型（Apache-2.0）。
+- 正文人名识别：[shibing624/bert4ner-base-chinese](https://huggingface.co/shibing624/bert4ner-base-chinese)（Apache-2.0），由 `deploy/ner_export.py` 固定版本下载、导出为 ONNX 并做 int8 量化，运行时只用 onnxruntime 与 tokenizers，不联网。未导出模型时该功能自动关闭，其余功能不受影响。
+
 ## 已知限制
 
-- 未接入 NER 模型：正文中出现、但从未在字段里出现过的人名可能漏遮。V2 上线 NER。
+- 正文人名识别（NER）用通用语料（人民日报等）训练的模型，未在病历语料上微调；少见姓氏（如“向”“万”“付”）的人名偶有漏识别。只有姓氏的称呼（“李主任”）不遮。
 - 压在照片等彩色图像上的水印分不出来，不会消除。
 - 手写签名靠字段标签、日期位置与笔画连通来定位，没有专门的签名检测模型；既无标签、又不在日期后面的签名可能漏遮。
 

@@ -17,6 +17,10 @@ mkdir -p "$DATA"
 container system status >/dev/null 2>&1 || container system start
 
 if ! container image inspect "$IMAGE" >/dev/null 2>&1; then
+  if [ ! -f "$ROOT/models/ner/model.onnx" ]; then
+    echo "缺少正文人名识别模型：先运行 .venv/bin/python deploy/ner_export.py" >&2
+    exit 1
+  fi
   container build -t "$IMAGE" -f "$ROOT/deploy/container/Containerfile" "$ROOT"
 fi
 

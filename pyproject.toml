@@ -18,6 +18,7 @@ dependencies = [
   "rapidfuzz>=3.9",
   "rapidocr>=3.4",
   "onnxruntime>=1.19",
+  "tokenizers>=0.19",
   "markdown>=3.6",
 ]
 
@@ -25,6 +26,8 @@ dependencies = [
 dev = ["pytest>=8"]
 # 合成评估集（bench/）：字体子集化
 bench = ["fonttools>=4.50"]
+# 导出正文人名识别模型（deploy/ner_export.py），只在准备模型时用，运行时不需要
+ner-export = ["torch>=2.2", "transformers>=4.40", "huggingface_hub>=0.23", "onnx>=1.16"]
 
 [tool.setuptools]
 packages = ["redactx", "redactx.detect", "service"]

@@ -7,7 +7,7 @@ import re
 from rapidfuzz.distance import Hamming
 
 from ..schemas import Hit, PageData
-from . import rules
+from . import ner, rules
 from .anchors import NOT_NAME, anchor, date_signatures
 from .lexicon import STOP_WORDS
 
@@ -29,6 +29,11 @@ def page_hits(page: PageData, enabled: set[str], custom: list[str]):
                     hits.append(Hit("CUSTOM", "custom", page.index, li, m.start(), m.end(), w))
     ahits, fields = anchor(page, enabled)
     hits.extend(ahits)
+    if {"PERSON", "STAFF"} & enabled:
+        # 叙述里的人名：与已有命中重叠的不再重复
+        for h in ner.page_names(page, enabled):
+            if not any(o.line == h.line and o.start < h.end and h.start < o.end for o in hits):
+                hits.append(h)
     if "SIGNATURE" in enabled:
         fields.extend(date_signatures(page))
     return hits, fields
