@@ -5,3 +5,7 @@ example
 **/__pycache__
 *.pdf
 .claude
+data-container
+bench
+handoff.md
+*.egg-info
