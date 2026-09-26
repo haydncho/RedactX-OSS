@@ -41,7 +41,16 @@ uv pip install --python .venv/bin/python -e ".[ner-export]" && .venv/bin/python 
 deploy/container/run.sh          # 默认端口 8090、容器名 redactx-oss；也可 run.sh <端口>
 ```
 
-首次运行会构建镜像（需要下载 Python 基础镜像与依赖，一次性）。构建前须先按方式一导出正文人名识别模型到 `models/ner/`，镜像会把它一并打包。数据目录挂载在 `data-container/`，服务只绑定 127.0.0.1。
+首次运行会构建镜像（需要下载 Python 基础镜像与依赖，一次性）。
+
+开发时不必每次重建镜像：
+
+```bash
+deploy/container/dev.sh              # 用已有镜像的运行环境，挂载仓库里的代码、页面与模型，改动即时生效
+deploy/container/dev.sh --rebuild    # 依赖（pyproject.toml、Containerfile）变了时才需要
+```
+
+Python 代码改动后服务自动重启（正在处理的任务会中断），Web 页刷新浏览器即可。容器名与端口同 `run.sh`，两者互相替换；最终部署用 `run.sh` 按版本号生成镜像。构建前须先按方式一导出正文人名识别模型到 `models/ner/`，镜像会把它一并打包。数据目录挂载在 `data-container/`，服务只绑定 127.0.0.1。
 
 ## 接口
 
