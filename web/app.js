@@ -42,6 +42,8 @@
     label_text: "type",
     dpi: 200,
     verify: "auto",        // auto 只自检扫描页 | on | off
+    keep_source: false,    // 保留打码前的页面，复核时可删框、改框
+    rv_type: "PERSON",     // 复核时新框的类型
     custom: "",
     retention: "24",
   };
@@ -52,6 +54,7 @@
   let pollTimer = null;
   let typeFilter = null;
   const blobCache = new Map();
+  let rev = 0;             // 复核保存后递增，让预览图重新加载
 
   // ---------- 接口 ----------
   function headers() {
@@ -202,6 +205,7 @@
       label_text: state.label_text,
       dpi: Number(state.dpi),
       verify: state.verify === "auto" ? "auto" : state.verify === "on",
+      keep_source: !!state.keep_source,
     };
   }
 
@@ -213,6 +217,7 @@
     const kind = (file.name.split(".").pop() || "").toUpperCase().slice(0, 4);
     job = { id: null, name: file.name, kind, pages: 0 };
     report = null; page = 1; blobCache.clear();
+    stopReview();
     showJob();
     setProgress(0, "上传中");
     const fd = new FormData();
@@ -236,6 +241,7 @@
   }
 
   function showJob() {
+    stopReview();
     $("#drop").hidden = true;
     $("#job").hidden = false;
     $("#job-name").textContent = job.name || job.id;
@@ -303,7 +309,8 @@
   }
 
   // ---------- 预览 ----------
-  const itemsOf = (p) => (report?.items || []).filter((it) => it.page === p);
+  const itemsOf = (p) => ((reviewing ? draft : report?.items) || []).filter((it) => it.page === p);
+  const preview = (p, v) => `/v1/jobs/${job.id}/preview/${p}?v=${v}${rev ? `&r=${rev}` : ""}`;
 
   function renderSummary() {
     const counts = report.counts || {};
@@ -331,7 +338,7 @@
       for (const en of entries) {
         if (!en.isIntersecting) continue;
         const img = en.target.querySelector("img");
-        if (!img.src) img.src = await imgSrc(`/v1/jobs/${job.id}/preview/${img.dataset.p}?v=after`);
+        if (!img.src) img.src = await imgSrc(preview(img.dataset.p, "after"));
         io.unobserve(en.target);
       }
     }, { root: box, rootMargin: "200px" });
@@ -350,7 +357,7 @@
     $("#pg-next").disabled = page >= report.pages;
     document.querySelectorAll(".thumb").forEach((t, i) => t.setAttribute("aria-current", String(i + 1 === page)));
     const cur = document.querySelectorAll(".thumb")[page - 1]; cur?.scrollIntoView({ block: "nearest" });
-    const [a, b] = await Promise.all([imgSrc(`/v1/jobs/${job.id}/preview/${page}?v=after`), imgSrc(`/v1/jobs/${job.id}/preview/${page}?v=before`)]);
+    const [a, b] = await Promise.all([imgSrc(preview(page, "after")), imgSrc(preview(page, "before"))]);
     $("#img-after").src = a;
     $("#img-before").src = b;
     renderBoxes();
@@ -360,17 +367,166 @@
 
   function renderBoxes() {
     const box = $("#boxes"); box.replaceChildren();
-    if (!$("#show-boxes").checked) return;
+    if (!$("#show-boxes").checked && !reviewing) return;
     for (const it of itemsOf(page)) {
       const info = entityInfo(it.type) || { group: "people", name: it.type };
       const [x0, y0, x1, y1] = it.box;
-      const d = el("div", { class: `box${typeFilter && typeFilter !== it.type ? " dim" : ""}`, title: info.name,
+      let cls = "box";
+      if (typeFilter && typeFilter !== it.type && !reviewing) cls += " dim";
+      if (reviewing) {
+        if (canEdit(it)) cls += " edit";
+        if (it._new) cls += " new";
+        if (it === sel) cls += " sel";
+      }
+      const d = el("div", { class: cls, title: reviewing && !canEdit(it) ? `${info.name}（未保留原件，不能删改）` : info.name,
         style: `left:${x0 * 100}%;top:${y0 * 100}%;width:${(x1 - x0) * 100}%;height:${(y1 - y0) * 100}%;--bc:${groupColor(info.group)}` });
+      d._item = it;
+      if (reviewing && it === sel && canEdit(it)) d.append(el("span", { class: "rs", title: "拖动调整大小" }));
       box.append(d);
     }
   }
 
-  const SRC_NAME = { rule: "规则", anchor: "字段锚定", "anchor-field": "填写区", propagate: "全文追踪", custom: "自定义词", color: "颜色", detector: "检测", "image-object": "图片对象", repeat: "跨页重复", watermark: "水印消除", verify: "自检补打" };
+  // ---------- 复核：拖出新框；保留原件的任务还可点选后拖动、拉伸、删除 ----------
+  let reviewing = false, draft = null, sel = null, dirty = 0, viewBefore = null;
+  const editable = () => !!report?.review?.editable;
+  const canEdit = (it) => editable() || !!it._new;
+
+  function startReview() {
+    if (!report) return;
+    reviewing = true; sel = null; dirty = 0;
+    draft = report.items.map((it) => ({ ...it }));
+    viewBefore = state.view; state.view = "after";
+    document.querySelectorAll("#seg-view button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.v === "after")));
+    renderView(); syncReview(); renderBoxes(); renderPageItems();
+  }
+
+  function stopReview() {
+    if (!reviewing) return;
+    reviewing = false; draft = null; sel = null; dirty = 0;
+    if (viewBefore) { state.view = viewBefore; viewBefore = null; document.querySelectorAll("#seg-view button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.v === state.view))); renderView(); }
+    syncReview();
+    if (report) { renderBoxes(); renderPageItems(); }
+  }
+
+  function syncReview() {
+    $("#btn-review").setAttribute("aria-pressed", String(reviewing));
+    $("#review-bar").hidden = !reviewing;
+    $("#stage").classList.toggle("reviewing", reviewing);
+    if (!reviewing) return;
+    $("#rv-hint").textContent = editable() ? "拖出新框；点选后可拖动、拉伸或按 Delete 删除"
+      : report.review?.finished ? "复核已完成，只能再加框：拖出新框" : "未保留原件，只能加框：拖出新框";
+    $("#rv-hint").title = editable() ? "" : "打码前的页面已删除，已有的框不能删除或修改";
+    $("#rv-del").disabled = !(sel && canEdit(sel));
+    $("#rv-save").disabled = !dirty;
+    const d = $("#rv-dirty"); d.textContent = dirty ? `未保存 ${dirty} 处修改` : "没有修改"; d.classList.toggle("on", !!dirty);
+    $("#rv-finish").hidden = !editable();
+  }
+
+  const touched = () => { dirty++; syncReview(); renderBoxes(); };
+
+  function deleteSel() {
+    if (!sel || !canEdit(sel)) return;
+    draft.splice(draft.indexOf(sel), 1); sel = null; touched(); renderPageItems();
+  }
+
+  async function saveReview() {
+    const btn = $("#rv-save"); btn.disabled = true;
+    const items = draft.map(({ _new, ...it }) => (_new ? { page: it.page, type: it.type, box: it.box } : it));
+    try {
+      report = await (await api(`/v1/jobs/${job.id}/review`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) })).json();
+    } catch (e) { toast(e.message); syncReview(); return; }
+    rev++; blobCache.clear();
+    toast("已保存并重新打码");
+    stopReview(); startReview();
+    renderSummary(); renderThumbs(); gotoPage(page); refreshHistory();
+  }
+
+  function initReview() {
+    const sel_ = $("#rv-type");
+    for (const e of catalog.entities.filter((e) => !["WATERMARK", "CUSTOM"].includes(e.code))) sel_.append(el("option", { value: e.code, text: e.name }));
+    if ([...sel_.options].some((o) => o.value === state.rv_type)) sel_.value = state.rv_type;
+    sel_.onchange = () => { state.rv_type = sel_.value; save(); };
+    $("#btn-review").onclick = () => {
+      if (!reviewing) return startReview();
+      if (dirty && !confirm("有未保存的修改，放弃吗？")) return;
+      stopReview();
+    };
+    $("#rv-cancel").onclick = () => { if (!dirty || confirm("放弃未保存的修改？")) stopReview(); };
+    $("#rv-del").onclick = deleteSel;
+    $("#rv-save").onclick = saveReview;
+    const dlgFin = $("#dlg-finish");
+    $("#rv-finish").onclick = () => { dlgFin.returnValue = ""; dlgFin.showModal(); };
+    dlgFin.addEventListener("close", async () => {
+      if (dlgFin.returnValue !== "ok" || !job?.id) return;
+      if (dirty) await saveReview();
+      try { report.review = await (await api(`/v1/jobs/${job.id}/review/finish`, { method: "POST" })).json(); } catch (e) { toast(e.message); return; }
+      toast("复核完成，已删除保留的打码前页面");
+      syncReview(); renderBoxes();
+    });
+
+    const layer = $("#boxes");
+    let drag = null;
+    const norm = (e) => { const r = $("#stage").getBoundingClientRect(); return [Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))]; };
+    layer.addEventListener("pointerdown", (e) => {
+      if (!reviewing || e.button !== 0 || panOn || spaceHeld) return;
+      e.preventDefault(); e.stopPropagation();
+      const [x, y] = norm(e);
+      const hit = e.target.closest(".box")?._item;
+      if (e.target.classList.contains("rs") && hit) {
+        drag = { mode: "resize", it: hit, box0: [...hit.box] };
+      } else if (hit) {
+        sel = hit;
+        drag = canEdit(hit) ? { mode: "move", it: hit, x, y, box0: [...hit.box] } : null;
+        syncReview(); renderBoxes();
+      } else {
+        const it = { page, type: $("#rv-type").value, source: "manual", box: [x, y, x, y], _new: true };
+        draft.push(it); sel = it;
+        drag = { mode: "draw", it, x, y };
+      }
+      if (drag) { drag.moved = false; layer.setPointerCapture(e.pointerId); }
+    });
+    layer.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      const [x, y] = norm(e), b = drag.it.box;
+      if (drag.mode === "draw") {
+        drag.it.box = [Math.min(x, drag.x), Math.min(y, drag.y), Math.max(x, drag.x), Math.max(y, drag.y)];
+      } else if (drag.mode === "move") {
+        const [x0, y0, x1, y1] = drag.box0, w = x1 - x0, h = y1 - y0;
+        const nx = Math.min(1 - w, Math.max(0, x0 + x - drag.x)), ny = Math.min(1 - h, Math.max(0, y0 + y - drag.y));
+        drag.it.box = [nx, ny, nx + w, ny + h];
+      } else {
+        drag.it.box = [b[0], b[1], Math.max(b[0] + 0.004, x), Math.max(b[1] + 0.004, y)];
+      }
+      drag.moved = true;
+      renderBoxes();
+    });
+    const end = () => {
+      if (!drag) return;
+      const { it, mode, moved } = drag; drag = null;
+      it.box = it.box.map((v) => Math.round(v * 10000) / 10000);
+      if (mode === "draw" && (it.box[2] - it.box[0] < 0.005 || it.box[3] - it.box[1] < 0.004)) {
+        draft.splice(draft.indexOf(it), 1); sel = null; syncReview(); renderBoxes(); return;
+      }
+      if (mode === "draw" || moved) { touched(); renderPageItems(); renderThumbCount(); }
+    };
+    layer.addEventListener("pointerup", end);
+    layer.addEventListener("pointercancel", end);
+    window.addEventListener("keydown", (e) => {
+      if (!reviewing || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName)) return;
+      if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); deleteSel(); }
+      if (e.key === "Escape") { sel = null; syncReview(); renderBoxes(); }
+    });
+    window.addEventListener("beforeunload", (e) => { if (reviewing && dirty) e.preventDefault(); });
+  }
+
+  function renderThumbCount() {
+    const t = document.querySelectorAll(".thumb")[page - 1]; if (!t) return;
+    const n = itemsOf(page).length; let c = t.querySelector(".tc");
+    if (!c && n) { c = el("span", { class: "tc" }); t.append(c); }
+    if (c) { c.textContent = n; c.hidden = !n; }
+  }
+
+  const SRC_NAME = { rule: "规则", anchor: "字段锚定", "anchor-field": "填写区", propagate: "全文追踪", custom: "自定义词", color: "颜色", detector: "检测", "image-object": "图片对象", repeat: "跨页重复", watermark: "水印消除", verify: "自检补打", manual: "人工添加" };
   function renderPageItems() {
     const ul = $("#page-items"); ul.replaceChildren();
     const items = itemsOf(page);
@@ -566,6 +722,9 @@
     bindSeg("#seg-label", "label_text");
     bindSeg("#seg-dpi", "dpi", Number);
     bindSeg("#seg-verify", "verify");
+    $("#opt-keep").checked = !!state.keep_source;
+    $("#opt-keep").addEventListener("change", (e) => { state.keep_source = e.target.checked; save(); });
+    initReview();
     state.view = state.view || "compare";
     bindSeg("#seg-view", "view");
     initHandle();
@@ -592,7 +751,7 @@
     window.addEventListener("dragover", (e) => e.preventDefault());
     window.addEventListener("drop", (e) => { e.preventDefault(); if (!$("#drop").hidden) return; const f = e.dataTransfer.files[0]; if (f) upload(f); });
 
-    $("#btn-new").onclick = () => { clearTimeout(pollTimer); $("#job").hidden = true; $("#drop").hidden = false; job = null; report = null; };
+    $("#btn-new").onclick = () => { if (reviewing && dirty && !confirm("有未保存的修改，放弃吗？")) return; stopReview(); clearTimeout(pollTimer); $("#job").hidden = true; $("#drop").hidden = false; job = null; report = null; };
     // 删除前弹出确认框；默认焦点在“取消”上
     const dlgDel = $("#dlg-delete");
     $("#btn-delete").onclick = () => { if (job?.id) { dlgDel.returnValue = ""; dlgDel.showModal(); } };

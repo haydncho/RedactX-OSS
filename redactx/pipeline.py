@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import secrets
 import shutil
@@ -44,6 +45,7 @@ class Options:
     dpi: int = 200
     verify: bool | str = "auto"  # auto：只自检扫描页（文字层页本来不做识别，自检要多花数倍时间）；True / False：全部开或关
     password: str | None = None
+    keep_source: bool = False  # 保留打码前的页面，复核时可以删框、改框；复核完成或到期后删除
 
     def style_for(self, code: str) -> str:
         s = self.styles.get(code) or self.default_style
@@ -388,6 +390,10 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
             r = vision.erase_watermark_bands(img, ang, color)
             if r:
                 band_regions.append(Region("ORG" if org else "WATERMARK", "watermark", i, r, style="watermark"))
+        if opts.keep_source:
+            (out_dir / "orig").mkdir(exist_ok=True)
+            orig = ocr._rotate(img, (360 - pd.rotation) % 360)
+            Image.fromarray(orig).save(out_dir / "orig" / f"{i + 1:05d}.jpg", "JPEG", quality=95)
         regions = _merge(regions)
         for r in regions:
             r.style = opts.style_for(r.type)
@@ -436,7 +442,10 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
 
     # ---------- 重建 ----------
     progress(0.99, "生成输出文件")
-    out_path = _rebuild(doc, pages_dir, out_dir, n)
+    out_path = _rebuild(doc.kind, doc.page_sizes_pt, pages_dir, out_dir, n)
+    # 复核时重打码、重建输出用
+    layout = {"kind": doc.kind, "sizes": [list(s) for s in doc.page_sizes_pt], "dpi": opts.dpi, "label_text": opts.label_text}
+    (out_dir / "layout.json").write_text(json.dumps(layout), encoding="utf-8")
     shutil.rmtree(out_dir / "convert", ignore_errors=True)
     (out_dir / "wm-clean.pdf").unlink(missing_ok=True)
     counts = Counter(it["type"] for it in report_items)
@@ -449,7 +458,8 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
         "items": report_items,
         "page_meta": page_meta,
         "verification": {"enabled": verified_pages > 0, "mode": opts.verify, "pages": verified_pages, "residual_hits": residual_total, "passed": True},
-        "watermark_objects": wm_objects,  # 从 PDF 结构里直接删除的水印对象数
+        "watermark_objects": wm_objects,
+        "review": {"editable": opts.keep_source, "edits": 0},  # 从 PDF 结构里直接删除的水印对象数
         "options": {
             "entities": sorted(enabled),
             "default_style": opts.default_style,
@@ -461,16 +471,16 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
     }
 
 
-def _rebuild(doc, pages_dir: Path, out_dir: Path, n: int) -> Path:
+def _rebuild(kind: str, sizes, pages_dir: Path, out_dir: Path, n: int) -> Path:
     files = [str(pages_dir / f"{i + 1:05d}.jpg") for i in range(n)]
-    if doc.kind == "pdf" or n > 1:
+    if kind == "pdf" or n > 1:
         out = out_dir / "redacted.pdf"
         # 按原页面尺寸（磅）输出
         with open(out, "wb") as fh:
-            fh.write(img2pdf.convert(files, layout_fun=_layout_from_sizes(doc.page_sizes_pt)))
+            fh.write(img2pdf.convert(files, layout_fun=_layout_from_sizes(sizes)))
         _sanitize(out)
         return out
-    ext = {"jpeg": "jpg", "png": "png", "bmp": "png", "webp": "png", "tiff": "png"}[doc.kind]
+    ext = {"jpeg": "jpg", "png": "png", "bmp": "png", "webp": "png", "tiff": "png"}[kind]
     out = out_dir / f"redacted.{ext}"
     im = Image.open(files[0])
     if ext == "jpg":
