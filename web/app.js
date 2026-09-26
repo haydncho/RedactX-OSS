@@ -133,7 +133,7 @@
         const sw = el("i", { class: `sty sty-${sel.value}` });
         const cb = el("input", { type: "checkbox", id, onchange: (ev) => {
           ev.target.checked ? state.entities.add(e.code) : state.entities.delete(e.code);
-          row.classList.toggle("off", !ev.target.checked); save();
+          row.classList.toggle("off", !ev.target.checked); updateSelToggle(); save();
         } });
         cb.checked = on;
         const row = el("div", { class: `ent${on ? "" : " off"}` }, cb, el("label", { for: id, text: e.name }), el("div", { class: "style-pick" }, sw, sel));
@@ -141,6 +141,22 @@
       }
       root.append(wrap);
     }
+    updateSelToggle();
+  }
+
+  // 全选按钮随勾选状态变化：一个没选显示“全选”，全部选中显示“全不选”，部分选中显示“已选 N 项”（点击全选）
+  const selectable = () => catalog.entities.filter((e) => e.code !== "CUSTOM").map((e) => e.code);
+  function updateSelToggle() {
+    const btn = $("#sel-toggle");
+    const codes = selectable();
+    const n = codes.filter((c) => state.entities.has(c)).length;
+    const [label, ic, title] = n === 0 ? ["全选", "check-all", "全部选中"]
+      : n === codes.length ? ["全不选", "square", "全部取消"]
+      : [`已选 ${n} 项`, "minus-square", `共 ${codes.length} 项，点击全选`];
+    btn.querySelector(".lb").textContent = label;
+    btn.querySelector("use").setAttribute("href", `#i-${ic}`);
+    btn.title = title;
+    btn.dataset.all = String(n === codes.length);
   }
 
   function bindSeg(id, key, cast = (v) => v) {
@@ -504,8 +520,11 @@
     $("#custom-words").addEventListener("input", (e) => { state.custom = e.target.value; save(); });
     $("#opt-verify").addEventListener("change", (e) => { state.verify = e.target.checked; save(); });
     $("#opt-retention").addEventListener("change", (e) => { state.retention = e.target.value; save(); });
-    $("#sel-all").onclick = () => { catalog.entities.forEach((e) => e.code !== "CUSTOM" && state.entities.add(e.code)); renderEntities(); save(); };
-    $("#sel-none").onclick = () => { state.entities.clear(); renderEntities(); save(); };
+    $("#sel-toggle").onclick = (ev) => {
+      if (ev.currentTarget.dataset.all === "true") state.entities.clear();
+      else selectable().forEach((c) => state.entities.add(c));
+      renderEntities(); save();
+    };
 
     const drop = $("#drop");
     $("#pick").onclick = (e) => { e.stopPropagation(); pickFile(); };
