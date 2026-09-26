@@ -1,0 +1,7 @@
+.venv
+.git
+data
+example
+**/__pycache__
+*.pdf
+.claude

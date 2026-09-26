@@ -1,0 +1,19 @@
+# 病案样本、处理数据、模型权重一律不进仓库
+example/
+data/
+data-container/
+protype/
+*.pdf
+*.tif
+*.tiff
+*.jpg
+*.jpeg
+*.png
+!web/**/*.png
+*.onnx
+
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store

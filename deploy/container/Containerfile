@@ -1,0 +1,40 @@
+# 锐消 RedactX 服务镜像（Apple container / OCI 通用）
+# 构建：container build -t redactx:0.1.0 -f deploy/container/Containerfile .
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    REDACTX_DATA=/data \
+    REDACTX_FONT=/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc \
+    REDACTX_SOFFICE=/usr/bin/soffice
+
+# 中文字体（打码标签用）、ONNX Runtime 依赖、LibreOffice（Word/WPS 等文档转 PDF）
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends fonts-noto-cjk libgomp1 \
+      libreoffice-writer-nogui libreoffice-calc-nogui libreoffice-impress-nogui \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY pyproject.toml ./
+RUN pip install \
+      "fastapi>=0.115" "uvicorn[standard]>=0.30" "python-multipart>=0.0.9" \
+      "pypdfium2>=4.30" "pikepdf>=9.0" "img2pdf>=0.5" "opencv-python-headless>=4.10" \
+      "numpy>=1.26" "pillow>=10.4" "rapidfuzz>=3.9" "rapidocr>=3.4" "onnxruntime>=1.19" "markdown>=3.6" \
+ # rapidocr 会连带装上完整版 opencv-python（依赖 libGL），换成 headless 版
+ && pip uninstall -y opencv-python \
+ && pip install --force-reinstall --no-deps "opencv-python-headless>=4.10" \
+ && python -c "import cv2; print(cv2.__version__)" \
+ # 构建时校验 OCR 模型已随包安装，运行时不再联网下载
+ && python -c "import rapidocr, pathlib; m = pathlib.Path(rapidocr.__file__).parent / 'models'; fs = sorted(p.name for p in m.glob('*.onnx')); print(fs); assert fs"
+
+COPY redactx ./redactx
+COPY service ./service
+COPY web ./web
+
+RUN useradd --create-home --uid 10001 redactx && mkdir -p /data && chown redactx /data
+USER redactx
+VOLUME ["/data"]
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=5s CMD python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/v1/health')" || exit 1
+CMD ["uvicorn", "service.app:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>锐消 RedactX</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='5' y='3' width='22' height='26' rx='3' fill='%230B6F6A'/%3E%3Crect x='9' y='9' width='14' height='3' rx='1.5' fill='%23fff'/%3E%3Crect x='9' y='15' width='9' height='3' rx='1.5' fill='%23ECEBFC'/%3E%3Crect x='9' y='21' width='12' height='3' rx='1.5' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="5" y="3" width="22" height="26" rx="3" class="mark-doc"/><rect x="9" y="9" width="14" height="3" rx="1.5" class="mark-line"/><rect x="9" y="15" width="9" height="3" rx="1.5" class="mark-pill"/><rect x="9" y="21" width="12" height="3" rx="1.5" class="mark-line"/></svg>
+    <span class="brand-cn">锐消</span><span class="brand-sep" aria-hidden="true">/</span><span class="brand-en">RedactX</span>
+  </div>
+  <div class="topbar-right">
+    <span class="chip-local" title="所有识别与打码都在这台机器上完成，不调用外部模型"><i></i>本机处理 · 不联网</span>
+    <a class="toplink" href="/openapi.json" target="_blank" rel="noopener">接口描述</a>
+    <button class="nav-btn" id="btn-key" type="button">API Key</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="settings" aria-label="脱敏设置">
+    <section class="panel">
+      <h2 data-eyebrow="PRESET">场景预设</h2>
+      <div class="presets" id="presets" role="radiogroup" aria-label="场景预设"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2 data-eyebrow="FIELDS">脱敏字段与样式</h2>
+        <div class="mini-actions"><button type="button" id="sel-all">全选</button><button type="button" id="sel-none">全不选</button></div>
+      </div>
+      <div id="entity-groups"></div>
+    </section>
+
+    <section class="panel">
+      <h2 data-eyebrow="CUSTOM"><label for="custom-words">自定义词</label></h2>
+      <p class="hint">每行一个，如院区名称、科室外号。至少 2 个字。</p>
+      <textarea id="custom-words" rows="3" placeholder="某某医院东院区"></textarea>
+    </section>
+
+    <section class="panel">
+      <h2 data-eyebrow="OPTIONS">处理选项</h2>
+      <div class="opt-row">
+        <span class="opt-label">识别模式</span>
+        <div class="seg" id="seg-mode" role="radiogroup" aria-label="识别模式">
+          <button type="button" data-v="strict" role="radio">严格</button>
+          <button type="button" data-v="balanced" role="radio">平衡</button>
+        </div>
+      </div>
+      <div class="opt-row">
+        <span class="opt-label">标签文字</span>
+        <div class="seg" id="seg-label" role="radiogroup" aria-label="标签文字">
+          <button type="button" data-v="type" role="radio">类型</button>
+          <button type="button" data-v="alias" role="radio">代号</button>
+        </div>
+      </div>
+      <div class="opt-row">
+        <span class="opt-label">输出分辨率</span>
+        <div class="seg" id="seg-dpi" role="radiogroup" aria-label="输出分辨率">
+          <button type="button" data-v="150" role="radio">150</button>
+          <button type="button" data-v="200" role="radio">200</button>
+          <button type="button" data-v="300" role="radio">300</button>
+        </div>
+      </div>
+      <label class="opt-row switch-row" for="opt-verify">
+        <span class="opt-label">出厂自检<small>对输出再识别一遍，耗时约翻倍</small></span>
+        <input type="checkbox" id="opt-verify" class="switch">
+      </label>
+      <div class="opt-row">
+        <label class="opt-label" for="opt-retention">结果保留</label>
+        <select id="opt-retention">
+          <option value="1">1 小时</option>
+          <option value="24" selected>24 小时</option>
+          <option value="72">3 天</option>
+        </select>
+      </div>
+      <div class="opt-row">
+        <label class="opt-label" for="opt-password">PDF 密码</label>
+        <input type="password" id="opt-password" autocomplete="off" placeholder="加密 PDF 才需要">
+      </div>
+    </section>
+  </aside>
+
+  <main class="workspace">
+    <section id="drop" class="dropzone" tabindex="0" aria-label="上传文件">
+      <input type="file" id="file" accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.bmp,.webp,.doc,.docx,.wps,.rtf,.odt,.xls,.xlsx,.et,.ods,.ppt,.pptx,.dps,.odp,.md,.markdown,.txt,application/pdf,image/*" hidden>
+      <div class="drop-art" aria-hidden="true">
+        <div class="sheet">
+          <span class="ln w80"></span>
+          <span class="ln w40"></span><span class="pill">姓名</span>
+          <span class="ln w60"></span>
+          <span class="ln w30"></span><span class="pill">身份证号</span>
+          <span class="ln w70"></span>
+          <span class="ln w50"></span><span class="hatch"></span>
+        </div>
+      </div>
+      <div class="mesh" aria-hidden="true"></div>
+      <div class="drop-text">
+        <span class="eyebrow">DROP · UPLOAD · REDACT</span>
+        <h1>把文档拖到这里。</h1>
+        <p>支持 PDF 与图片（JPG、PNG、TIFF），Word（doc、docx）、WPS、RTF、ODT、Excel、PPT、Markdown 和纯文本。扫描件、系统导出件、混合 PDF 都可以。</p>
+        <div class="cta-row"><button type="button" id="pick" class="btn primary lg">选择文件</button><span class="cta-hint">或直接拖入，也可以拖到页面任意位置</span></div>
+        <div class="formats" aria-hidden="true"><span>PDF</span><span>JPG</span><span>PNG</span><span>TIFF</span><span>DOC</span><span>DOCX</span><span>WPS</span><span>RTF</span><span>XLSX</span><span>PPTX</span><span>MD</span><span>TXT</span></div>
+        <p class="drop-note">文件只在本机处理。Word、WPS 等文档先在本机转成 PDF 再脱敏，输出为 PDF。原件处理完立即删除，脱敏结果按“结果保留”时长自动清除。</p>
+      </div>
+    </section>
+
+    <section id="job" class="job" hidden>
+      <div class="job-head">
+        <div class="job-title">
+          <span class="file-kind" id="job-kind">PDF</span>
+          <div>
+            <div class="job-name" id="job-name">—</div>
+            <div class="job-meta" id="job-meta">—</div>
+          </div>
+        </div>
+        <div class="job-actions">
+          <button type="button" class="btn ghost" id="btn-new">处理新文件</button>
+          <button type="button" class="btn ghost danger" id="btn-delete" hidden>删除结果</button>
+          <a class="btn primary" id="btn-download" hidden>下载脱敏文件</a>
+        </div>
+      </div>
+
+      <div class="progress" id="progress">
+        <div class="progress-bar"><span id="progress-fill"></span></div>
+        <div class="progress-text"><span id="progress-msg">上传中</span><span id="progress-pct" class="num">0%</span></div>
+      </div>
+
+      <div class="alert" id="job-error" role="alert" hidden></div>
+
+      <div class="result" id="result" hidden>
+        <div class="viewer-bar">
+          <div class="seg" id="seg-view" role="radiogroup" aria-label="查看方式">
+            <button type="button" data-v="compare" role="radio">对比</button>
+            <button type="button" data-v="after" role="radio">脱敏后</button>
+            <button type="button" data-v="before" role="radio">原件</button>
+          </div>
+          <label class="check-inline"><input type="checkbox" id="show-boxes" checked> 显示遮盖框</label>
+          <div class="pager">
+            <button type="button" class="icon-btn" id="pg-prev" aria-label="上一页">‹</button>
+            <span class="num" id="pg-label">1 / 1</span>
+            <button type="button" class="icon-btn" id="pg-next" aria-label="下一页">›</button>
+          </div>
+        </div>
+        <div class="viewer-wrap">
+          <div class="thumbs" id="thumbs" aria-label="页面缩略图"></div>
+          <div class="viewer" id="viewer">
+            <div class="stage" id="stage">
+              <img id="img-after" alt="脱敏后页面">
+              <div class="before-clip" id="before-clip"><img id="img-before" alt="原件页面"></div>
+              <div class="boxes" id="boxes"></div>
+              <div class="handle" id="handle" role="slider" aria-label="对比分隔线" tabindex="0" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><span></span></div>
+            </div>
+          </div>
+          <aside class="summary" aria-label="识别结果">
+            <h3>遮盖统计</h3>
+            <div class="total"><span class="num" id="sum-total">0</span> 处 · <span class="num" id="sum-pages">0</span> 页</div>
+            <ul class="counts" id="counts"></ul>
+            <h3>本页</h3>
+            <ul class="page-items" id="page-items"></ul>
+            <p class="hint" id="sum-foot"></p>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="history" id="history-wrap" hidden>
+      <div class="history-head"><h2>最近任务</h2><span class="eyebrow">RECENT JOBS</span></div>
+      <ul id="history"></ul>
+    </section>
+  </main>
+</div>
+
+<dialog id="dlg-key">
+  <form method="dialog">
+    <h3>API Key</h3>
+    <p class="hint">服务端设置了 REDACTX_API_KEY 时才需要填写。只保存在本浏览器。</p>
+    <input type="password" id="key-input" autocomplete="off">
+    <div class="dlg-actions"><button class="btn ghost" value="cancel">取消</button><button class="btn primary" value="ok" id="key-save">保存</button></div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

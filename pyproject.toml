@@ -1,0 +1,32 @@
+[project]
+name = "redactx"
+version = "0.1.0"
+description = "锐消 RedactX：病案等文档的本地脱敏服务"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "python-multipart>=0.0.9",
+  "pypdfium2>=4.30",
+  "pikepdf>=9.0",
+  "img2pdf>=0.5",
+  "opencv-python-headless>=4.10",
+  "numpy>=1.26",
+  "pillow>=10.4",
+  "rapidfuzz>=3.9",
+  "rapidocr>=3.4",
+  "onnxruntime>=1.19",
+  "markdown>=3.6",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools]
+packages = ["redactx", "redactx.detect", "service"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

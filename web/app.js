@@ -1,0 +1,471 @@
+/* 锐消 RedactX Web 页：选择脱敏字段与样式、上传、查看进度、对比预览、下载。 */
+(() => {
+  "use strict";
+  const $ = (s) => document.querySelector(s);
+  const el = (tag, attrs = {}, ...kids) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === "class") n.className = v;
+      else if (k === "text") n.textContent = v;
+      else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+      else if (v !== undefined && v !== null && v !== false) n.setAttribute(k, v === true ? "" : v);
+    }
+    for (const c of kids) if (c != null) n.append(c);
+    return n;
+  };
+
+  const STORE_KEY = "redactx.settings.v1";
+  const KEY_KEY = "redactx.apikey";
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* 隐私模式下忽略 */ } },
+  };
+
+  let catalog = null;
+  let state = {
+    preset: "audit",
+    entities: null,        // Set of codes
+    styles: {},            // code -> style
+    mode: "strict",
+    label_text: "type",
+    dpi: 200,
+    verify: false,
+    custom: "",
+    retention: "24",
+  };
+  let job = null;          // { id, pages, name, kind }
+  let report = null;
+  let page = 1;
+  let view = "compare";
+  let pollTimer = null;
+  let typeFilter = null;
+  const blobCache = new Map();
+
+  // ---------- 接口 ----------
+  function headers() {
+    const k = store.get(KEY_KEY, "");
+    return k ? { "X-API-Key": k } : {};
+  }
+  async function api(path, opts = {}) {
+    const r = await fetch(path, { ...opts, headers: { ...headers(), ...(opts.headers || {}) } });
+    if (!r.ok) {
+      let msg = `请求失败（${r.status}）`;
+      try { const j = await r.json(); if (j.error) msg = j.error.message || msg; } catch { /* 非 JSON */ }
+      const e = new Error(msg); e.status = r.status; throw e;
+    }
+    return r;
+  }
+  async function imgSrc(path) {
+    if (!store.get(KEY_KEY, "")) return path;
+    if (blobCache.has(path)) return blobCache.get(path);
+    const r = await api(path);
+    const url = URL.createObjectURL(await r.blob());
+    blobCache.set(path, url);
+    return url;
+  }
+
+  function toast(msg) {
+    const t = $("#toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => t.classList.remove("show"), 2600);
+  }
+
+  // ---------- 设置面板 ----------
+  const groupColor = (g) => `var(--c-${g})`;
+  const entityInfo = (code) => catalog.entities.find((e) => e.code === code);
+
+  function applyPreset(code) {
+    const p = catalog.presets.find((x) => x.code === code);
+    if (!p) return;
+    state.preset = code;
+    state.styles = {};
+    for (const e of catalog.entities) {
+      state.styles[e.code] = p.overrides[e.code] || (code === "audit" ? e.default_style : p.default_style);
+    }
+    renderEntities();
+    renderPresets();
+    save();
+  }
+
+  function renderPresets() {
+    const box = $("#presets");
+    box.replaceChildren();
+    for (const p of catalog.presets) {
+      const sty = p.code === "audit" ? "label" : p.default_style;
+      box.append(el("button", {
+        type: "button", class: "preset", role: "radio", "aria-checked": String(state.preset === p.code),
+        onclick: () => applyPreset(p.code),
+      },
+      el("div", { class: "swatch" }, el("span", { style: "width:34%" }), el("i", { class: `sty sty-${sty}` }), el("span", { style: "width:22%" })),
+      el("b", { text: p.name }), el("small", { text: p.desc })));
+    }
+  }
+
+  function renderEntities() {
+    const root = $("#entity-groups");
+    root.replaceChildren();
+    for (const g of catalog.groups) {
+      const ents = catalog.entities.filter((e) => e.group === g.key && e.code !== "CUSTOM");
+      if (!ents.length) continue;
+      const wrap = el("div", { class: "group" }, el("div", { class: "group-title" }, el("i", { style: `background:${groupColor(g.key)}` }), g.name));
+      for (const e of ents) {
+        const on = state.entities.has(e.code);
+        const id = `ent-${e.code}`;
+        const sel = el("select", { "aria-label": `${e.name}的打码样式`, onchange: (ev) => {
+          state.styles[e.code] = ev.target.value; state.preset = "custom"; renderPresets(); sw.className = `sty sty-${ev.target.value}`; save();
+        } });
+        for (const s of catalog.styles) sel.append(el("option", { value: s.code, text: s.name, title: s.desc }));
+        sel.value = state.styles[e.code] || e.default_style;
+        const sw = el("i", { class: `sty sty-${sel.value}` });
+        const cb = el("input", { type: "checkbox", id, onchange: (ev) => {
+          ev.target.checked ? state.entities.add(e.code) : state.entities.delete(e.code);
+          row.classList.toggle("off", !ev.target.checked); save();
+        } });
+        cb.checked = on;
+        const row = el("div", { class: `ent${on ? "" : " off"}` }, cb, el("label", { for: id, text: e.name }), el("div", { class: "style-pick" }, sw, sel));
+        wrap.append(row);
+      }
+      root.append(wrap);
+    }
+  }
+
+  function bindSeg(id, key, cast = (v) => v) {
+    const seg = $(id);
+    const sync = () => seg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-checked", String(String(state[key]) === b.dataset.v)));
+    seg.addEventListener("click", (ev) => {
+      const b = ev.target.closest("button"); if (!b) return;
+      state[key] = cast(b.dataset.v); sync(); save();
+      if (key === "view") renderView();
+    });
+    sync();
+    return sync;
+  }
+
+  function save() {
+    store.set(STORE_KEY, { ...state, entities: [...state.entities] });
+  }
+
+  function load() {
+    const s = store.get(STORE_KEY, null);
+    if (s) {
+      state = { ...state, ...s, entities: new Set(s.entities || []) };
+    }
+    if (!state.entities || !state.entities.size && !s) {
+      state.entities = new Set(catalog.entities.filter((e) => e.default).map((e) => e.code));
+    }
+    if (!Object.keys(state.styles).length) applyPreset("audit");
+  }
+
+  function buildOptions() {
+    const custom = $("#custom-words").value.split(/\n+/).map((w) => w.trim()).filter((w) => w.length >= 2);
+    const entities = [...state.entities];
+    if (custom.length) entities.push("CUSTOM");
+    return {
+      entities,
+      default_style: "label",
+      styles: Object.fromEntries(entities.map((c) => [c, state.styles[c] || entityInfo(c)?.default_style || "label"])),
+      custom_words: custom,
+      mode: state.mode,
+      label_text: state.label_text,
+      dpi: Number(state.dpi),
+      verify: $("#opt-verify").checked,
+    };
+  }
+
+  // ---------- 上传与任务 ----------
+  function pickFile() { $("#file").click(); }
+
+  function upload(file) {
+    if (!state.entities.size && !$("#custom-words").value.trim()) { toast("请至少选择一类脱敏字段"); return; }
+    const kind = (file.name.split(".").pop() || "").toUpperCase().slice(0, 4);
+    job = { id: null, name: file.name, kind, pages: 0 };
+    report = null; page = 1; blobCache.clear();
+    showJob();
+    setProgress(0, "上传中");
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("options", JSON.stringify(buildOptions()));
+    fd.append("retention_hours", $("#opt-retention").value);
+    const pw = $("#opt-password").value; if (pw) fd.append("password", pw);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/v1/jobs");
+    for (const [k, v] of Object.entries(headers())) xhr.setRequestHeader(k, v);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) setProgress(0.08 * e.loaded / e.total, `上传中 ${Math.round(100 * e.loaded / e.total)}%`); };
+    xhr.onload = () => {
+      let body = {}; try { body = JSON.parse(xhr.responseText); } catch { /* ignore */ }
+      if (xhr.status >= 300) { showError(body.error?.message || `上传失败（${xhr.status}）`); return; }
+      job.id = body.job_id; job.pages = body.pages;
+      $("#job-meta").textContent = body.pages ? `${body.pages} 页 · 已提交` : "已提交 · 先转换为 PDF";
+      poll();
+    };
+    xhr.onerror = () => showError("上传失败，请确认服务正在运行");
+    xhr.send(fd);
+  }
+
+  function showJob() {
+    $("#drop").hidden = true;
+    $("#job").hidden = false;
+    $("#job-name").textContent = job.name || job.id;
+    $("#job-kind").textContent = job.kind || "PDF";
+    $("#job-meta").textContent = job.pages ? `${job.pages} 页` : "—";
+    $("#job-error").hidden = true;
+    $("#result").hidden = true;
+    $("#progress").hidden = false;
+    $("#btn-download").hidden = true;
+    $("#btn-delete").hidden = true;
+  }
+
+  function setProgress(p, msg) {
+    $("#progress-fill").style.width = `${Math.max(2, Math.round(p * 100))}%`;
+    $("#progress-pct").textContent = `${Math.round(p * 100)}%`;
+    $("#progress-msg").textContent = msg;
+  }
+
+  function showError(msg) {
+    clearTimeout(pollTimer);
+    $("#progress").hidden = true;
+    const a = $("#job-error"); a.textContent = msg; a.hidden = false;
+    $("#btn-delete").hidden = !job?.id;
+    refreshHistory();
+  }
+
+  async function poll() {
+    clearTimeout(pollTimer);
+    try {
+      const j = await (await api(`/v1/jobs/${job.id}`)).json();
+      if (j.status === "failed") { showError(j.error || "处理失败"); return; }
+      if (j.status === "succeeded") { await loadResult(j); return; }
+      setProgress(0.08 + 0.92 * (j.progress || 0), j.message || "处理中");
+      pollTimer = setTimeout(poll, 700);
+    } catch (e) {
+      showError(e.message);
+    }
+  }
+
+  async function loadResult(j) {
+    setProgress(1, "完成");
+    report = await (await api(`/v1/jobs/${job.id}/report`)).json();
+    job.pages = report.pages;
+    const secs = report.elapsed_sec;
+    $("#job-meta").textContent = `${report.pages} 页 · 用时 ${secs < 60 ? secs + " 秒" : (secs / 60).toFixed(1) + " 分钟"} · 保留至 ${new Date(j.expires * 1000).toLocaleString("zh-CN", { hour12: false })}`;
+    $("#progress").hidden = true;
+    $("#result").hidden = false;
+    const dl = $("#btn-download");
+    dl.hidden = false;
+    dl.href = `/v1/jobs/${job.id}/result`;
+    dl.onclick = async (ev) => {
+      if (!store.get(KEY_KEY, "")) return; // 无 Key 时直接走链接下载
+      ev.preventDefault();
+      const r = await api(`/v1/jobs/${job.id}/result`);
+      const url = URL.createObjectURL(await r.blob());
+      const a = el("a", { href: url, download: `redacted-${job.id}.${report.output.split(".").pop()}` });
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    };
+    $("#btn-delete").hidden = false;
+    renderSummary();
+    renderThumbs();
+    gotoPage(1);
+    refreshHistory();
+  }
+
+  // ---------- 预览 ----------
+  const itemsOf = (p) => (report?.items || []).filter((it) => it.page === p);
+
+  function renderSummary() {
+    const counts = report.counts || {};
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    $("#sum-total").textContent = total;
+    $("#sum-pages").textContent = report.pages;
+    const ul = $("#counts"); ul.replaceChildren();
+    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    for (const [code, n] of entries) {
+      const info = entityInfo(code) || { name: code, group: "people" };
+      const li = el("li", { class: typeFilter === code ? "active" : "", title: "点击只看这一类", onclick: () => { typeFilter = typeFilter === code ? null : code; renderSummary(); renderBoxes(); } },
+        el("i", { style: `background:${groupColor(info.group)}` }), info.name, el("span", { class: "n num", text: n }));
+      ul.append(li);
+    }
+    if (!entries.length) ul.append(el("li", { text: "未发现需要遮盖的内容" }));
+    const v = report.verification;
+    $("#sum-foot").textContent = v?.enabled ? `出厂自检：补打 ${v.residual_hits} 处` : "未开启出厂自检";
+  }
+
+  function renderThumbs() {
+    const box = $("#thumbs"); box.replaceChildren();
+    const io = new IntersectionObserver(async (entries) => {
+      for (const en of entries) {
+        if (!en.isIntersecting) continue;
+        const img = en.target.querySelector("img");
+        if (!img.src) img.src = await imgSrc(`/v1/jobs/${job.id}/preview/${img.dataset.p}?v=after`);
+        io.unobserve(en.target);
+      }
+    }, { root: box, rootMargin: "200px" });
+    for (let p = 1; p <= report.pages; p++) {
+      const n = itemsOf(p).length;
+      const b = el("button", { class: "thumb", type: "button", "aria-label": `第 ${p} 页`, onclick: () => gotoPage(p) },
+        el("img", { alt: "", "data-p": p }), el("span", { class: "tn", text: p }), n ? el("span", { class: "tc", text: n }) : null);
+      box.append(b); io.observe(b);
+    }
+  }
+
+  async function gotoPage(p) {
+    page = Math.min(Math.max(1, p), report.pages);
+    $("#pg-label").textContent = `${page} / ${report.pages}`;
+    $("#pg-prev").disabled = page <= 1;
+    $("#pg-next").disabled = page >= report.pages;
+    document.querySelectorAll(".thumb").forEach((t, i) => t.setAttribute("aria-current", String(i + 1 === page)));
+    const cur = document.querySelectorAll(".thumb")[page - 1]; cur?.scrollIntoView({ block: "nearest" });
+    const [a, b] = await Promise.all([imgSrc(`/v1/jobs/${job.id}/preview/${page}?v=after`), imgSrc(`/v1/jobs/${job.id}/preview/${page}?v=before`)]);
+    $("#img-after").src = a;
+    $("#img-before").src = b;
+    renderBoxes();
+    renderPageItems();
+    renderView();
+  }
+
+  function renderBoxes() {
+    const box = $("#boxes"); box.replaceChildren();
+    if (!$("#show-boxes").checked) return;
+    for (const it of itemsOf(page)) {
+      const info = entityInfo(it.type) || { group: "people", name: it.type };
+      const [x0, y0, x1, y1] = it.box;
+      const d = el("div", { class: `box${typeFilter && typeFilter !== it.type ? " dim" : ""}`, title: info.name,
+        style: `left:${x0 * 100}%;top:${y0 * 100}%;width:${(x1 - x0) * 100}%;height:${(y1 - y0) * 100}%;--bc:${groupColor(info.group)}` });
+      box.append(d);
+    }
+  }
+
+  const SRC_NAME = { rule: "规则", anchor: "字段锚定", "anchor-field": "填写区", propagate: "全文追踪", custom: "自定义词", color: "颜色", detector: "检测", "image-object": "图片对象", verify: "自检补打" };
+  function renderPageItems() {
+    const ul = $("#page-items"); ul.replaceChildren();
+    const items = itemsOf(page);
+    if (!items.length) { ul.append(el("li", { text: "本页没有遮盖" })); return; }
+    const agg = {};
+    for (const it of items) { const k = `${it.type}|${it.source}`; agg[k] = (agg[k] || 0) + 1; }
+    for (const [k, n] of Object.entries(agg)) {
+      const [type, src] = k.split("|");
+      const info = entityInfo(type) || { group: "people", name: type };
+      ul.append(el("li", {}, el("i", { style: `background:${groupColor(info.group)}` }), `${info.name} × ${n}`, el("span", { class: "src", text: SRC_NAME[src] || src })));
+    }
+  }
+
+  function renderView() {
+    const stage = $("#stage");
+    stage.classList.toggle("mode-after", state.view === "after");
+    stage.classList.toggle("mode-before", state.view === "before");
+  }
+
+  function initHandle() {
+    const stage = $("#stage"), handle = $("#handle"), clip = $("#before-clip");
+    let pct = 50;
+    const setPct = (v) => {
+      pct = Math.min(100, Math.max(0, v));
+      handle.style.left = `${pct}%`;
+      clip.style.clipPath = `inset(0 ${100 - pct}% 0 0)`;
+      handle.setAttribute("aria-valuenow", Math.round(pct));
+    };
+    const fromEvent = (e) => { const r = stage.getBoundingClientRect(); setPct(((e.clientX - r.left) / r.width) * 100); };
+    handle.addEventListener("pointerdown", (e) => { handle.setPointerCapture(e.pointerId); fromEvent(e); });
+    handle.addEventListener("pointermove", (e) => { if (handle.hasPointerCapture(e.pointerId)) fromEvent(e); });
+    handle.addEventListener("keydown", (e) => { if (e.key === "ArrowLeft") setPct(pct - 5); if (e.key === "ArrowRight") setPct(pct + 5); });
+    stage.addEventListener("click", (e) => { if (state.view === "compare" && e.target !== handle) fromEvent(e); });
+    setPct(50);
+  }
+
+  // ---------- 历史 ----------
+  async function refreshHistory() {
+    try {
+      const list = await (await api("/v1/jobs?limit=12")).json();
+      const ul = $("#history"); ul.replaceChildren();
+      $("#history-wrap").hidden = !list.length;
+      const ST = { succeeded: "完成", failed: "失败", running: "处理中", queued: "排队" };
+      for (const j of list) {
+        const total = j.summary ? Object.values(j.summary.counts || {}).reduce((a, b) => a + b, 0) : null;
+        const when = new Date(j.created * 1000).toLocaleString("zh-CN", { hour12: false, month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+        ul.append(el("li", {},
+          el("span", { class: "when num", text: when }),
+          el("span", { text: `${(j.input_ext || "").toUpperCase()} · ${j.pages ?? "?"} 页${total != null ? ` · 遮盖 ${total} 处` : ""}` }),
+          el("span", { class: `status ${j.status}`, text: ST[j.status] || j.status }),
+          j.status === "succeeded" ? el("button", { type: "button", text: "查看", onclick: () => openJob(j.id, j.input_ext) }) : el("span")));
+      }
+    } catch (e) {
+      if (e.status === 401) toast("需要 API Key，请点右上角设置");
+    }
+  }
+
+  async function openJob(id, ext) {
+    job = { id, name: `任务 ${id.slice(4, 12)}`, kind: (ext || "").toUpperCase() };
+    blobCache.clear(); typeFilter = null;
+    showJob();
+    const j = await (await api(`/v1/jobs/${id}`)).json();
+    await loadResult(j);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // ---------- 启动 ----------
+  async function init() {
+    try {
+      catalog = await (await api("/v1/catalog")).json();
+    } catch (e) {
+      toast(e.status === 401 ? "需要 API Key，请点右上角设置" : "无法连接服务");
+      return;
+    }
+    load();
+    renderPresets();
+    renderEntities();
+    $("#custom-words").value = state.custom || "";
+    $("#opt-verify").checked = !!state.verify;
+    $("#opt-retention").value = state.retention || "24";
+    bindSeg("#seg-mode", "mode");
+    bindSeg("#seg-label", "label_text");
+    bindSeg("#seg-dpi", "dpi", Number);
+    state.view = state.view || "compare";
+    bindSeg("#seg-view", "view");
+    initHandle();
+    refreshHistory();
+
+    $("#custom-words").addEventListener("input", (e) => { state.custom = e.target.value; save(); });
+    $("#opt-verify").addEventListener("change", (e) => { state.verify = e.target.checked; save(); });
+    $("#opt-retention").addEventListener("change", (e) => { state.retention = e.target.value; save(); });
+    $("#sel-all").onclick = () => { catalog.entities.forEach((e) => e.code !== "CUSTOM" && state.entities.add(e.code)); renderEntities(); save(); };
+    $("#sel-none").onclick = () => { state.entities.clear(); renderEntities(); save(); };
+
+    const drop = $("#drop");
+    $("#pick").onclick = (e) => { e.stopPropagation(); pickFile(); };
+    drop.onclick = pickFile;
+    drop.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pickFile(); } };
+    $("#file").onchange = (e) => { const f = e.target.files[0]; if (f) upload(f); e.target.value = ""; };
+    ["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+    ["dragleave", "drop"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+    drop.addEventListener("drop", (e) => { const f = e.dataTransfer.files[0]; if (f) upload(f); });
+    // 在页面任何位置放下文件都可以
+    window.addEventListener("dragover", (e) => e.preventDefault());
+    window.addEventListener("drop", (e) => { e.preventDefault(); if (!$("#drop").hidden) return; const f = e.dataTransfer.files[0]; if (f) upload(f); });
+
+    $("#btn-new").onclick = () => { clearTimeout(pollTimer); $("#job").hidden = true; $("#drop").hidden = false; job = null; report = null; };
+    $("#btn-delete").onclick = async () => {
+      if (!job?.id) return;
+      const btn = $("#btn-delete");
+      if (btn.dataset.confirm !== "1") { btn.dataset.confirm = "1"; btn.textContent = "再点一次确认删除"; setTimeout(() => { btn.dataset.confirm = ""; btn.textContent = "删除结果"; }, 3000); return; }
+      try { await api(`/v1/jobs/${job.id}`, { method: "DELETE" }); toast("已删除脱敏结果与预览"); } catch (e) { toast(e.message); }
+      btn.dataset.confirm = ""; btn.textContent = "删除结果";
+      $("#btn-new").click(); refreshHistory();
+    };
+    $("#pg-prev").onclick = () => gotoPage(page - 1);
+    $("#pg-next").onclick = () => gotoPage(page + 1);
+    $("#show-boxes").onchange = renderBoxes;
+    window.addEventListener("keydown", (e) => {
+      if (!report || $("#result").hidden || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName)) return;
+      if (e.key === "ArrowDown" || e.key === "PageDown") { e.preventDefault(); gotoPage(page + 1); }
+      if (e.key === "ArrowUp" || e.key === "PageUp") { e.preventDefault(); gotoPage(page - 1); }
+    });
+
+    const dlg = $("#dlg-key");
+    $("#btn-key").onclick = () => { $("#key-input").value = store.get(KEY_KEY, ""); dlg.showModal(); };
+    dlg.addEventListener("close", () => { if (dlg.returnValue === "ok") { store.set(KEY_KEY, $("#key-input").value.trim()); location.reload(); } });
+  }
+
+  init();
+})();
