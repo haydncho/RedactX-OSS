@@ -36,7 +36,7 @@ uv pip install --python .venv/bin/python -e ".[dev]"
 ### 方式二：Apple container
 
 ```bash
-deploy/container/run.sh 8080
+deploy/container/run.sh          # 默认端口 8090、容器名 redactx-oss；也可 run.sh <端口>
 ```
 
 首次运行会构建镜像（需要下载 Python 基础镜像与依赖，一次性）。数据目录挂载在 `data-container/`，服务只绑定 127.0.0.1。
