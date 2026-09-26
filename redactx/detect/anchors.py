@@ -15,6 +15,7 @@ from .lexicon import BELOW_TYPES, COMPOUND_SURNAMES, GENERIC, LABELS, MAX_LEN, S
 _LABEL_MAX = max(len(k) for k in LABELS)
 _STOP_MAX = max(len(k) for k in STOP_WORDS)
 SEPS = set("：:;；")
+SIGN_SUFFIX = {"签名", "签字", "签章"}
 SOFT_SEPS = set("：:()（）[]【】 _＿-—")
 PUNCT_PRE = set("：:，,；;。.、()（）[]【】 |｜/")
 NOT_NAME = set(
@@ -25,8 +26,12 @@ NOT_NAME = set(
 RE_CJK_NAME = re.compile(r"[一-龥·•]{2,5}")
 RE_ALNUM = re.compile(r"[0-9A-Za-z\-]+")
 
-# 找不到可识别取值时，填写区的宽度（以字高为单位）
+# 找不到可识别取值时，填写区的宽度（以字高为单位）。签名栏一直延伸到本行下一个字段，签名之后的笔迹都遮盖
 FIELD_WIDTH = {"PERSON": 6, "STAFF": 6, "ORG": 16, "ADDRESS": 20, "ID_CARD": 14, "PHONE": 10, "MEDICAL_ID": 8}
+SIGN_WIDTH = 24
+# 标签与取值之间超过这个距离（字高），取值多半不是这个标签的：可搜索 PDF 的文字层里没有手写字，
+# “患者 （手写姓名） 已阅读……”在文字层里是“患者……已阅读……”，不能把后面的打印字当成姓名
+FAR_VALUE = 2.5
 
 
 @dataclass
@@ -62,18 +67,28 @@ def find_labels(page: PageData) -> list[LabelHit]:
                 i += 1
                 continue
             j = i + len(lab)
+            kind = LABELS[lab]
+            # “上级医师签名”“主治医师签字”：角色标签后紧跟签名字样，合并成一个签名标签（否则角色标签的填写区在“签名”前就截止了）
+            suffix = _match_at(text, j, SIGN_SUFFIX, 2) if lab not in SIGNATURE_LABELS else None
+            if suffix:
+                j += len(suffix)
+                lab = text[i:j]
             pre_ok = i == 0 or text[i - 1] in PUNCT_PRE or text[i - 1].isdigit() or _gap(line, i - 1, i) > 0.4
-            # 通用词在行尾时没有冒号或间隔可作凭据（多为正文折行，如“……（患者”），只有独占一行才算标签
-            at_end = j == len(text) and (lab not in GENERIC or i == 0)
+            # “谈话医师签名：”：签名标签后面带冒号时，前面紧挨着别的字（词表里没有的角色词）也算
+            if not pre_ok and "签" in lab and j < len(text) and text[j] in SEPS:
+                pre_ok = True
+            # 通用词在行尾时没有冒号或间隔可作凭据（多为正文折行，如“……（患者”），只有独占一行才算标签；
+            # 签名类标签除外：“……自愿接受治疗。签名 （手写）”里的“签名”正在句末
+            at_end = j == len(text) and (lab not in GENERIC or i == 0 or lab in SIGNATURE_LABELS)
             post_ok = at_end or (j < len(text) and (text[j] in SOFT_SEPS or _gap(line, j - 1, j) > 0.4))
             # 表单标签位于行首时，手写内容常紧贴标签，被 OCR 识别到同一行
             if not post_ok and i == 0 and lab not in GENERIC and line.source == "ocr":
                 post_ok = True
             # “患者”“医生”等通用词后面紧跟手写姓名、没有冒号时也算标签
-            if not post_ok and pre_ok and LABELS[lab] in ("PERSON", "STAFF") and _handwritten_name_after(line, i, j):
+            if not post_ok and pre_ok and kind in ("PERSON", "STAFF") and _handwritten_name_after(line, i, j):
                 post_ok = True
             if pre_ok and post_ok:
-                out.append(LabelHit(li, i, j, lab, LABELS[lab]))
+                out.append(LabelHit(li, i, j, lab, kind))
                 i = j
             else:
                 i += 1
@@ -176,6 +191,15 @@ def _valid(kind: str, value: str) -> bool:
     return True
 
 
+def _surname_start(value: str) -> bool:
+    return bool(value) and (value[0] in SURNAMES or value[:2] in COMPOUND_SURNAMES)
+
+
+def _looks_printed(text: str, chars) -> bool:
+    """成句的打印文字：至少 4 个字且识别置信度高（手写签名常被识别成一两个低置信度的字）。"""
+    return len(text) >= 4 and sum(c.score for c in chars) / max(len(chars), 1) >= 0.9
+
+
 def _starts_with_label(text: str, k: int) -> bool:
     """取值本身以标签或非敏感字段词开头（如“质控日期”“主治医师”），说明这里没有填写内容。"""
     return bool(_match_at(text, k, STOP_WORDS, _STOP_MAX))
@@ -237,6 +261,9 @@ def row_stops(page: PageData, cy: float, h: float) -> list[float]:
         for i in range(len(t)):
             if _match_at(t, i, STOP_WORDS, _STOP_MAX) or t[i] in TEMPLATE_CHARS - {" "}:
                 xs.append(ln.chars[i].box[0])
+            # 成句的打印文字也是填写区的边界：单独成行的，或同一行里隔开一大段空白后出现的（可搜索 PDF 的文字层会把整行连成一行）
+            elif (i == 0 or _gap(ln, i - 1, i) > 1.5) and _looks_printed(t[i:], ln.chars[i:]):
+                xs.append(ln.chars[i].box[0])
     return sorted(xs)
 
 
@@ -247,45 +274,67 @@ def anchor(page: PageData, enabled: set[str]) -> tuple[list[Hit], list[tuple[str
     labels = find_labels(page)
     for lh in labels:
         kind = lh.type
-        is_sig = lh.label in SIGNATURE_LABELS
+        is_sig = "签" in lh.label
         if kind not in enabled and not (is_sig and "SIGNATURE" in enabled):
             continue
         line = page.lines[lh.line]
+        lab_chars = line.chars[lh.start : lh.end]
+        h = max(sorted(c.box[3] - c.box[1] for c in lab_chars)[len(lab_chars) // 2], 1)
+        lab_x1 = lab_chars[-1].box[2]
         k, e = _take_value(line, lh.end, kind)
         value = line.text[k:e]
         if _starts_with_label(line.text, k):
+            value = ""
+        limit = None  # 填写区右边界：远处成句的打印文字
+        if value and kind in ("PERSON", "STAFF") and (line.chars[k].box[0] - lab_x1) / h > FAR_VALUE and not _surname_start(value):
+            if _looks_printed(line.text[k:], line.chars[k:]):
+                limit = line.chars[k].box[0] - 0.3 * h
             value = ""
         # 标签后面紧跟“查房”“记录”等病历常用词：这是正文（如“上级医师查房，同意……”），不是表单字段
         if any(value.startswith(w) for w in NOT_NAME if len(w) >= 2):
             continue
         if _valid(kind, value) and kind in enabled:
             hits.append(Hit(kind, "anchor", page.index, lh.line, k, e, value))
+            if is_sig:  # 签名之后到本行下一个字段的笔迹全部遮盖（收笔拖尾、认不出的字）；不用标签下方的备选区
+                fields += [(f[0], f[1], f[2], None) for f in _field_rects(page, line, lh, kind, is_sig, h, limit) if f[2]]
             continue
-        nb = _right_neighbor(page, line, line.chars[lh.end - 1].box[2], lh.line)
+        nb = _right_neighbor(page, line, lab_x1, lh.line) if limit is None else None
         if nb is not None:
             nl = page.lines[nb[0]]
             k2, e2 = _take_value(nl, 0, kind)
             v2 = "" if _starts_with_label(nl.text, k2) else nl.text[k2:e2]
+            far = (nl.box[0] - lab_x1) / h > FAR_VALUE
+            if far and kind in ("PERSON", "STAFF") and not _surname_start(v2):
+                # 远处的邻行不像姓名：若是成句的打印文字，它就是填写区的右边界
+                if _looks_printed(nl.text, nl.chars):
+                    limit = nl.box[0] - 0.3 * h
+                v2 = ""
             if _valid(kind, v2) and kind in enabled:
                 hits.append(Hit(kind, "anchor", page.index, nb[0], k2, e2, v2))
+                if is_sig:
+                    fields += [(f[0], f[1], f[2], None) for f in _field_rects(page, line, lh, kind, is_sig, h, limit) if f[2]]
                 continue
-        # 推算填写区：标签右侧到同一行下一个标签或非敏感字段之间
-        lab_chars = line.chars[lh.start : lh.end]
-        h = max(sorted(c.box[3] - c.box[1] for c in lab_chars)[len(lab_chars) // 2], 1)
-        lx0, lx1 = lab_chars[0].box[0], lab_chars[-1].box[2]
-        ly0, ly1 = min(c.box[1] for c in lab_chars), max(c.box[3] for c in lab_chars)
-        cy = (ly0 + ly1) / 2
-        right = lx1 + FIELD_WIDTH.get(kind, 8) * h
-        for sx in row_stops(page, cy, h):
-            if sx > lx1 + 0.4 * h:
-                right = min(right, sx - 0.25 * h)
-                break
-        ftype = "SIGNATURE" if is_sig else "HANDWRITTEN_FIELD"
-        right_rect = (lx1 + 0.15 * h, cy - 0.8 * h, right, cy + 0.8 * h) if right - lx1 > 1.2 * h else None
-        below_rect = None
-        if is_sig or kind in BELOW_TYPES:
-            # 表格列头式的栏目：填写区在标签正下方（仅当右侧没有笔迹时采用）
-            below_rect = (lx0 - 0.4 * h, ly1 + 0.15 * h, lx1 + 0.4 * h, ly1 + 2.3 * h)
-        if right_rect or below_rect:
-            fields.append((ftype, lh.label, right_rect, below_rect))
+        fields += _field_rects(page, line, lh, kind, is_sig, h, limit)
     return hits, fields
+
+
+def _field_rects(page: PageData, line: Line, lh: LabelHit, kind: str, is_sig: bool, h: float, limit: float | None):
+    """推算填写区：标签右侧到同一行下一个标签、非敏感字段或成句打印文字之间；签名与人员栏另给标签正下方的备选区域。"""
+    lab_chars = line.chars[lh.start : lh.end]
+    lx0, lx1 = lab_chars[0].box[0], lab_chars[-1].box[2]
+    ly0, ly1 = min(c.box[1] for c in lab_chars), max(c.box[3] for c in lab_chars)
+    cy = (ly0 + ly1) / 2
+    right = lx1 + (SIGN_WIDTH if is_sig else FIELD_WIDTH.get(kind, 8)) * h
+    if limit is not None:
+        right = min(right, limit)
+    for sx in row_stops(page, cy, h):
+        if sx > lx1 + 0.4 * h:
+            right = min(right, sx - 0.25 * h)
+            break
+    ftype = "SIGNATURE" if is_sig else "HANDWRITTEN_FIELD"
+    right_rect = (lx1 + 0.15 * h, cy - 0.8 * h, right, cy + 0.8 * h) if right - lx1 > 1.2 * h else None
+    below_rect = None
+    if is_sig or kind in BELOW_TYPES:
+        # 表格列头式的栏目：填写区在标签正下方（仅当右侧没有笔迹时采用）
+        below_rect = (lx0 - 0.4 * h, ly1 + 0.15 * h, lx1 + 0.4 * h, ly1 + 2.3 * h)
+    return [(ftype, lh.label, right_rect, below_rect)] if right_rect or below_rect else []

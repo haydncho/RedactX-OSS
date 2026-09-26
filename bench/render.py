@@ -36,7 +36,7 @@ class Truth:
 
 
 def page_chars(pages: list[Page]) -> str:
-    return "".join(sorted({ch for p in pages for e in p.els for ch in e.text}))
+    return "".join(sorted({ch for p in pages for e in p.els for ch in e.text} | set(USE_MARK)))
 
 
 class Writer:
@@ -93,10 +93,11 @@ class Writer:
         """文字层水印：旋转的浅灰半透明文字对象，平铺在页面上。"""
         out = []
         c, s = math.cos(math.radians(angle)), math.sin(math.radians(angle))
-        tw = measure(text, size, True)
-        for fx, fy in WATERMARK_GRID:
+        for k, (fx, fy) in enumerate(WATERMARK_GRID):
+            wt, wtype = _wm_text(k, text)
+            tw = measure(wt, size, True)
             obj = raw.FPDFPageObj_CreateTextObj(self.pdf.raw, self.bold, ctypes.c_float(size))
-            ws = ctypes.create_string_buffer((text + "\0").encode("utf-16-le"))
+            ws = ctypes.create_string_buffer((wt + "\0").encode("utf-16-le"))
             raw.FPDFText_SetText(obj, ctypes.cast(ws, ctypes.POINTER(raw.FPDF_WCHAR)))
             raw.FPDFPageObj_SetFillColor(obj, 150, 150, 150, 90)
             # 以水印中心为基准旋转
@@ -106,7 +107,7 @@ class Writer:
             raw.FPDFPage_InsertObject(page.raw, obj)
             l, b, r, t = (ctypes.c_float() for _ in range(4))
             raw.FPDFPageObj_GetBounds(obj, l, b, r, t)
-            out.append(Truth("ORG", "redact", "watermark", _norm((l.value, H - t.value, r.value, H - b.value), W, H), text))
+            out.append(Truth(wtype, "redact", "watermark", _norm((l.value, H - t.value, r.value, H - b.value), W, H), wt))
         return out
 
     def text_page(self, p: Page, rng: random.Random, scan_base: bool = False, watermark: bool = False) -> list[Truth]:
@@ -148,9 +149,18 @@ class Writer:
         page.gen_content()
         return out
 
-    def image_page(self, im: Image.Image, w_pt: float, h_pt: float) -> None:
+    def image_page(self, im: Image.Image, w_pt: float, h_pt: float, ocr_layer: Page | None = None) -> None:
+        """整页图片。ocr_layer 给出时，另加一层不可见的打印文字（可搜索 PDF：只有打印字，没有手写字）。"""
         page = self.pdf.new_page(w_pt, h_pt)
         self._image(page, h_pt, 0, 0, w_pt, h_pt, im, jpeg=True)
+        for e in (ocr_layer.els if ocr_layer else []):
+            if e.kind == "text" and e.text.strip():
+                obj = raw.FPDFPageObj_CreateTextObj(self.pdf.raw, self.bold if e.bold else self.font, ctypes.c_float(e.size))
+                ws = ctypes.create_string_buffer((e.text + "\0").encode("utf-16-le"))
+                raw.FPDFText_SetText(obj, ctypes.cast(ws, ctypes.POINTER(raw.FPDF_WCHAR)))
+                raw.FPDFTextObj_SetTextRenderMode(obj, raw.FPDF_TEXTRENDERMODE_INVISIBLE)
+                raw.FPDFPageObj_Transform(obj, 1, 0, 0, 1, e.x, h_pt - e.y - e.size * _ASC)
+                raw.FPDFPage_InsertObject(page.raw, obj)
         page.gen_content()
 
     def save(self, path) -> None:
@@ -221,10 +231,16 @@ def hand_rgba(text: str, px: int, rng: random.Random, signature: bool = False, i
 
 HARD = {"faint_seal", "watermark", "big_sig"}
 WATERMARK_GRID = [(0.3, 0.3), (0.72, 0.42), (0.3, 0.6), (0.72, 0.75)]  # 水印中心（页面比例）
+USE_MARK = "仅供医保审核使用"  # 与院名交替出现的非机构水印：同样应整体去除
+
+
+def _wm_text(k: int, hospital: str) -> tuple[str, str]:
+    """第 k 个水印的文字与标准答案类型：院名与用途水印交替。"""
+    return (hospital, "ORG") if k % 2 == 0 else (USE_MARK, "WATERMARK")
 
 
 def scan_page(p: Page, chars: str, dpi: int, paper: str, rng: random.Random, rotate: bool = False,
-              hard: frozenset[str] = frozenset()) -> tuple[Image.Image, list[Truth], tuple[float, float]]:
+              hard: frozenset[str] = frozenset(), skew: bool = True) -> tuple[Image.Image, list[Truth], tuple[float, float]]:
     """扫描件：印刷底图 + 手写 + 盖章 + 纸张与扫描退化。返回 (整页图, 标准答案, 页面尺寸 pt)。
 
     hard 可选的难点：faint_seal 压在院名上的淡粉色低饱和印章；watermark 斜向院名水印；
@@ -271,13 +287,15 @@ def scan_page(p: Page, chars: str, dpi: int, paper: str, rng: random.Random, rot
         # 平铺的斜向院名水印，压在正文上
         head = next((e for e in p.els if e.kind == "text" and e.bold and e.truth and e.truth[0] == "ORG"), None)
         if head:
-            wm = watermark_rgba(head.text, int(26 * scale), angle=rng.uniform(25, 35))
-            bb = wm.getbbox() or (0, 0, wm.width, wm.height)
-            for fx, fy in WATERMARK_GRID:
+            ang = rng.uniform(25, 35)
+            for k, (fx, fy) in enumerate(WATERMARK_GRID):
+                wt, wtype = _wm_text(k, head.text)
+                wm = watermark_rgba(wt, int(26 * scale), angle=ang)
+                bb = wm.getbbox() or (0, 0, wm.width, wm.height)
                 x, y = int(W * fx - wm.width / 2), int(H * fy - wm.height / 2)
                 _multiply(im, wm, x, y, alpha=1.0)
-                items.append((Truth("ORG", "redact", "watermark", [], head.text), [x + bb[0], y + bb[1], x + bb[2], y + bb[3]]))
-    arr, M = _degrade(np.asarray(im), paper, rng)
+                items.append((Truth(wtype, "redact", "watermark", [], wt), [x + bb[0], y + bb[1], x + bb[2], y + bb[3]]))
+    arr, M = _degrade(np.asarray(im), paper, rng, skew)
     boxes = [_affine_box(b, M) for _, b in items]
     w_pt, h_pt = p.w, p.h
     if rotate:
@@ -310,7 +328,7 @@ def _multiply(im: Image.Image, rgba: Image.Image, x: int, y: int, alpha: float) 
     im.paste(Image.fromarray(np.clip(base, 0, 255).astype(np.uint8)))
 
 
-def _degrade(arr: np.ndarray, paper: str, rng: random.Random) -> tuple[np.ndarray, np.ndarray]:
+def _degrade(arr: np.ndarray, paper: str, rng: random.Random, skew: bool = True) -> tuple[np.ndarray, np.ndarray]:
     nrng = np.random.default_rng(rng.randint(0, 2**31))
     img = arr.astype(np.float32)
     h, w = img.shape[:2]
@@ -324,7 +342,7 @@ def _degrade(arr: np.ndarray, paper: str, rng: random.Random) -> tuple[np.ndarra
         img = 8 + img * (244 / 255)
         img += nrng.normal(0, 3.5, (h, w, 1)).astype(np.float32)
     img = cv2.GaussianBlur(np.clip(img, 0, 255), (0, 0), 0.7)
-    ang = rng.uniform(-0.6, 0.6)
+    ang = rng.uniform(-0.6, 0.6) if skew else 0.0
     M = cv2.getRotationMatrix2D((w / 2, h / 2), ang, 1.0)
     border = tuple(float(v) for v in np.median(img.reshape(-1, 3)[:: 97], axis=0))
     img = cv2.warpAffine(img, M, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=border)

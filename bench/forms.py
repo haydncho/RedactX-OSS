@@ -371,7 +371,40 @@ def daily_note(c: Case, logo_img) -> Page:
     return p
 
 
+def consent(c: Case, logo_img) -> Page:
+    """知情同意书（手写签署）：只用于扫描件。标签与手写内容隔得较远、后面还跟着打印文字；句末的“签名”后接手写签名。"""
+    p = Page("知情同意书")
+    _header(p, c, "手术知情同意书", logo_img)
+    y = 112
+    p.field(40, y, "姓名", c.patient, truth=("PERSON", "redact"), sep="：", gap=1)
+    p.field(300, y, "住院号", c.inpatient_no, truth=("MEDICAL_ID", "redact"), sep="：", gap=1)
+    p.line(40, y + 18, p.w - 40, y + 18)
+    y += 36
+    y = p.flow(52, y, p.w - 104, [("　　医师已向我详细说明手术的目的、方式、风险及可能出现的并发症，我已充分理解，同意接受手术治疗。"
+                                   "手术中如出现意外情况，同意医师根据病情采取必要的处理措施。", None)]) + 16
+    # 1. “患者”与手写姓名隔得较远，姓名后面还有打印文字
+    p.text(52, y, "患者")
+    p.hand(52 + 60, y, c.patient, truth=("PERSON", "redact"))
+    p.text(300, y, "已阅读并理解上述内容。")
+    y += 40
+    # 2. 句末的“签名”，后接手写签名
+    x = p.text(52, y, "我已了解上述风险，自愿接受治疗。签名")
+    p.hand(x + 8, y, c.patient, truth=("SIGNATURE", "redact"), esign=True)
+    y += 44
+    # 3. “签名：”后面的签名写得很远
+    p.text(52, y, "家属签名：")
+    p.hand(52 + 150, y, c.contact, truth=("SIGNATURE", "redact"), esign=True)
+    p.field(360, y, "与患者关系", "配偶", sep="：", gap=1)
+    y += 44
+    # 4. 医师签名与签名日期（手写日期应保留）
+    p.field(52, y, "谈话医师签名", c.staff["主治医师"], truth=("SIGNATURE", "redact"), hand=True, esign=True, sep="：", gap=6)
+    p.text(330, y, "签名日期：")
+    p.hand(330 + measure("签名日期：", 10.5) + 4, y, fmt_date(c.admit).replace("年", ".").replace("月", ".").rstrip("日"), truth=("DATE", "keep"))
+    _footer(p, c, 6)
+    return p
+
+
 def case_pages(c: Case) -> list[Page]:
-    """前 4 页各形态通用；第 5 页为手写病程，只有扫描类形态会用到（见 make.VARIANTS）。"""
+    """前 4 页各形态通用；第 5、6 页（手写病程、手写知情同意书）只有扫描类形态会用到（见 make.VARIANTS）。"""
     lg = logo(c.hospital)
-    return [front_page(c, lg), lab_report(c, lg, c.rng), progress_note(c, lg), endoscopy(c, lg, c.rng), daily_note(c, lg)]
+    return [front_page(c, lg), lab_report(c, lg, c.rng), progress_note(c, lg), endoscopy(c, lg, c.rng), daily_note(c, lg), consent(c, lg)]

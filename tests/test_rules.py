@@ -128,3 +128,25 @@ def test_label_then_name_at_line_end():
     # 以姓氏字开头的病历常用词不算
     for text in ["患者高热", "患者平稳", "医生查体"]:
         assert anchor(PageData(0, 1000, 1000, lines=[_ocr_line(text)]), {"PERSON", "STAFF"})[0] == [], text
+
+
+def test_role_plus_sign_labels():
+    # “上级医师签名：”合并成一个签名标签；“谈话医师签名：”前面是词表外的角色词也算
+    for text, label in [("上级医师签名：", "上级医师签名"), ("谈话医师签名：", "医师签名")]:
+        page = PageData(0, 1000, 1000, lines=[_ocr_line(text)])
+        _, fields = anchor(page, {"STAFF", "SIGNATURE"})
+        assert [(f[0], f[1]) for f in fields] == [("SIGNATURE", label)], text
+
+
+def test_sign_label_at_sentence_end():
+    page = PageData(0, 1000, 1000, lines=[_ocr_line("我已了解上述风险，自愿接受治疗。签名")])
+    _, fields = anchor(page, {"STAFF", "SIGNATURE"})
+    assert [f[0] for f in fields] == ["SIGNATURE"]
+
+
+def test_far_printed_text_is_not_the_name():
+    # 可搜索 PDF 的文字层里没有手写字：“患者 ……（空白）…… 已阅读并理解上述内容”，后面的打印字不是姓名
+    ln = _line("患者已阅读并理解上述内容。", gaps={2: 120})
+    hits, fields = anchor(PageData(0, 1000, 1000, lines=[ln]), {"PERSON"})
+    assert hits == []
+    assert len(fields) == 1 and fields[0][2][2] < ln.chars[2].box[0]  # 填写区止于打印文字之前
