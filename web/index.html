@@ -22,6 +22,7 @@
   <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5"/></symbol>
   <symbol id="i-check-all" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8 12 3 3 5-6"/></symbol>
   <symbol id="i-square" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/></symbol>
+  <symbol id="i-minus-square" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 12h8"/></symbol>
   <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></symbol>
   <symbol id="i-file-plus" viewBox="0 0 24 24"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8l-5-5Z"/><path d="M12 11v6M9 14h6"/></symbol>
   <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
@@ -61,7 +62,7 @@
     <section class="panel">
       <div class="panel-head">
         <h2 data-eyebrow="FIELDS"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg>脱敏字段与样式</h2>
-        <div class="mini-actions"><button type="button" id="sel-all"><svg class="ic" aria-hidden="true"><use href="#i-check-all"/></svg>全选</button><button type="button" id="sel-none"><svg class="ic" aria-hidden="true"><use href="#i-square"/></svg>全不选</button></div>
+        <div class="mini-actions"><button type="button" id="sel-toggle"><svg class="ic" aria-hidden="true"><use href="#i-check-all"/></svg><span class="lb">全选</span></button></div>
       </div>
       <div id="entity-groups"></div>
     </section>
