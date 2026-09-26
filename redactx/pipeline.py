@@ -198,6 +198,7 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
     page_hits: list[list[Hit]] = []
     page_regions: list[list[Region]] = []
     digest_pages: dict[str, set[int]] = {}
+    graphics: list[vision.Graphic] = []
 
     progress(0.01, "解析文件")
     for img, pd in iter_pages(src, doc.kind, opts.dpi, opts.password):
@@ -222,7 +223,9 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
         if "SEAL" in enabled:
             regions += [Region("SEAL", "color", pd.index, r) for r in vision.red_seals(work, opts.dpi)]
         if "QRCODE" in enabled:
-            regions += [Region("QRCODE", "detector", pd.index, r) for r in vision.codes(work)]
+            regions += [Region("QRCODE", "detector", pd.index, r) for r in vision.codes(work, opts.dpi)]
+        if "LOGO" in enabled:
+            graphics += vision.graphic_candidates(work, pd.lines, pd.index, opts.dpi)
         _preview(img, prev_dir / f"before-{pd.index + 1}.jpg")
         pages.append(pd)
         page_hits.append(hits)
@@ -230,6 +233,9 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
         progress(0.02 + 0.6 * (pd.index + 1) / n, f"识别第 {pd.index + 1}/{n} 页")
 
     repeated = {d for d, ps in digest_pages.items() if len(ps) >= 2}
+    # 扫描页没有图片对象可比，改为比对页眉页脚里的图形：跨页重复的判为 Logo
+    for g in vision.repeated_graphics(graphics):
+        page_regions[g.page].append(Region("LOGO", "repeat", g.page, g.rect))
     all_hits = [h for hs in page_hits for h in hs]
     seeds = engine.collect_seeds(all_hits, opts.custom_words)
     seeds = {v: t for v, t in seeds.items() if t in enabled}

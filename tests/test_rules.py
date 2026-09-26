@@ -73,3 +73,17 @@ def test_anchor_skips_prose():
     page = PageData(0, 1000, 1000, lines=[_line("患者无腹痛，大便正常")])
     hits, _ = anchor(page, {"PERSON"})
     assert hits == []
+
+
+def test_anchor_skips_generic_label_at_line_end():
+    # 正文折行恰好停在“（患者”，不应推算出填写区
+    page = PageData(0, 1000, 1000, lines=[_line("由家属陪同就诊（患者")])
+    hits, fields = anchor(page, {"PERSON"})
+    assert hits == [] and fields == []
+
+
+def test_anchor_label_alone_on_line():
+    # 表格里单独一格的“签名”，填写内容在下方
+    page = PageData(0, 1000, 1000, lines=[_line("签名")])
+    _, fields = anchor(page, {"STAFF", "SIGNATURE"})
+    assert [f[0] for f in fields] == ["SIGNATURE"]
