@@ -328,7 +328,10 @@ def anchor(page: PageData, enabled: set[str]) -> tuple[list[Hit], list[tuple[str
         if any(value.startswith(w) for w in NOT_NAME if len(w) >= 2):
             continue
         if _valid(kind, value) and kind in enabled:
-            hits.append(Hit(kind, "anchor", page.index, lh.line, k, e, value, seed=not lh.weak))
+            # 通用词（医师、患者、签名……）后的取值证据弱：首字须是常见姓氏才作全文追踪的种子；
+            # 明确标签（姓名、主治医师、科主任……）后的照常作种子（手写姓名首字常被 OCR 认错，不能要求姓氏）
+            seed = not lh.weak and (lh.label not in GENERIC or _surname_start(value))
+            hits.append(Hit(kind, "anchor", page.index, lh.line, k, e, value, seed=seed))
             if is_sig:  # 签名之后到本行下一个字段的笔迹全部遮盖（收笔拖尾、认不出的字）；不用标签下方的备选区
                 fields += [(f[0], f[1], f[2], None) for f in _field_rects(page, line, lh, kind, is_sig, h, limit) if f[2]]
             continue
@@ -344,7 +347,8 @@ def anchor(page: PageData, enabled: set[str]) -> tuple[list[Hit], list[tuple[str
                     limit = nl.box[0] - 0.3 * h
                 v2 = ""
             if _valid(kind, v2) and kind in enabled:
-                hits.append(Hit(kind, "anchor", page.index, nb[0], k2, e2, v2, seed=not lh.weak))
+                # 取自标签旁边另一行的取值证据弱：首字须是常见姓氏才作种子（B 样例第 50 页的表单用语曾被追踪 65 次）
+                hits.append(Hit(kind, "anchor", page.index, nb[0], k2, e2, v2, seed=not lh.weak and _surname_start(v2)))
                 if is_sig:
                     fields += [(f[0], f[1], f[2], None) for f in _field_rects(page, line, lh, kind, is_sig, h, limit) if f[2]]
                 continue

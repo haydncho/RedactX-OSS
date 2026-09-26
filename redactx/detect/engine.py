@@ -8,7 +8,7 @@ from rapidfuzz.distance import Hamming
 
 from ..schemas import Hit, PageData
 from . import rules
-from .anchors import anchor, date_signatures
+from .anchors import NOT_NAME, anchor, date_signatures
 from .lexicon import STOP_WORDS
 
 SEED_TYPES = {"PERSON", "STAFF", "ORG", "ID_CARD", "PHONE", "MEDICAL_ID", "BANK_CARD", "USCC", "CUSTOM"}
@@ -45,6 +45,9 @@ def collect_seeds(all_hits: list[Hit], custom: list[str]) -> dict[str, str]:
             if not _CJK.match(v) or len(v) < 2 or v in STOP_WORDS:
                 continue
             if h.source not in ("anchor", "custom"):
+                continue
+            # 以常见姓氏字开头的病历用语（康复治疗、高热、信息）也不作种子
+            if any(v.startswith(w) for w in NOT_NAME if len(w) >= 2):
                 continue
         elif h.type == "ORG":
             if len(v) < 4:

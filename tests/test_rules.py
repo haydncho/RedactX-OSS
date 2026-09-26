@@ -215,3 +215,18 @@ def test_common_words_and_weak_names_do_not_seed():
 def test_company_name_not_swallowing_sentence():
     orgs = lambda t: [t[a:b] for k, a, b in rules.find(t) if k == "ORG"]
     assert orgs("患者同意由澄岚晨星科技有限公司支付费用") == ["澄岚晨星科技有限公司"]
+
+
+def test_weak_sources_seed_only_with_surname():
+    from redactx.detect.engine import collect_seeds
+
+    seeds = lambda text: collect_seeds(anchor(PageData(0, 1000, 1000, lines=[_line(text, gaps={text.index("：") + 1: 4} if "：" in text else None)]), {"PERSON", "STAFF"})[0], [])
+    # 明确标签后：姓不在常见姓氏表里（罕见姓或首字被认错）也作种子
+    assert seeds("姓名：乜翀") == {"乜翀": "PERSON"}
+    assert seeds("科主任：乜翀") == {"乜翀": "STAFF"}
+    # 通用词后：首字须是常见姓氏
+    assert seeds("医师：乜翀") == {}
+    assert seeds("医师：王一") == {"王一": "STAFF"}
+    # 以病历用语开头的一律不作种子
+    from redactx.schemas import Hit
+    assert collect_seeds([Hit("STAFF", "anchor", 0, 0, 0, 4, "康复治疗")], []) == {}
