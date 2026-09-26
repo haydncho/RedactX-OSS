@@ -89,7 +89,8 @@ def detect_orientation(img: np.ndarray) -> int:
         return 0
     best, best_score = 90, -1.0
     for k in (90, 270):
-        r = eng(_rotate(small, k), use_det=True, use_cls=True, use_rec=True)
+        # 不开方向分类：它会把倒置的文字行翻正，两个方向的置信度就拉不开差距，文字少的页会选反
+        r = eng(_rotate(small, k), use_det=True, use_cls=False, use_rec=True)
         scores = list(getattr(r, "scores", None) or [])
         s = float(np.mean(scores)) * len(scores) if scores else 0.0
         if s > best_score:
