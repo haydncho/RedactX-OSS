@@ -132,6 +132,7 @@
     $("#api-desc").textContent = spec.info.description || "";
     $("#api-base").textContent = location.origin;
     $("#api-version").textContent = spec.info.version;
+    const bv = $("#brand-ver"); if (bv) { bv.textContent = `v${spec.info.version}`; bv.hidden = false; }
 
     const nav = $("#api-nav");
     nav.append(el("div", { class: "nav-group" }, el("div", { class: "nav-title", text: "说明" }),

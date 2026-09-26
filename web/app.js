@@ -706,6 +706,8 @@
 
   // ---------- 启动 ----------
   async function init() {
+    // 标题后显示服务版本（/v1/health 不需要 API Key）
+    fetch("/v1/health").then((r) => r.json()).then((h) => { const v = $("#brand-ver"); v.textContent = `v${h.version}`; v.hidden = false; }).catch(() => {});
     try {
       catalog = await (await api("/v1/catalog")).json();
     } catch (e) {
