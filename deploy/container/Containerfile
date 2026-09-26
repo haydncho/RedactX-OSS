@@ -1,5 +1,6 @@
 # 锐消 RedactX 服务镜像（Apple container / OCI 通用）
-# 构建：container build -t redactx:0.1.3 -f deploy/container/Containerfile .
+# 构建前先导出正文人名识别模型：.venv/bin/python deploy/ner_export.py（写入 models/ner/）
+# 构建：container build -t redactx:<版本> -f deploy/container/Containerfile .
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -7,7 +8,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     REDACTX_DATA=/data \
     REDACTX_FONT=/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc \
-    REDACTX_SOFFICE=/usr/bin/soffice
+    REDACTX_SOFFICE=/usr/bin/soffice \
+    REDACTX_NER_DIR=/app/models/ner
 
 # 中文字体（打码标签用）、ONNX Runtime 依赖、LibreOffice（Word/WPS 等文档转 PDF）
 RUN apt-get update \
@@ -31,6 +33,8 @@ RUN pip install \
 COPY redactx ./redactx
 COPY service ./service
 COPY web ./web
+# 正文人名识别模型：先在本机运行 deploy/ner_export.py 导出到 models/ner/
+COPY models/ner ./models/ner
 
 RUN useradd --create-home --uid 10001 redactx && mkdir -p /data && chown redactx /data
 USER redactx
