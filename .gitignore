@@ -11,6 +11,8 @@ bench/out/
 *.jpeg
 *.png
 !web/**/*.png
+# README 截图（合成的虚构病案）
+!docs/images/*.png
 *.onnx
 
 .venv/
