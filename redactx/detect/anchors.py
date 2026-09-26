@@ -28,6 +28,11 @@ NOT_NAME = set(
     查看 给予 予以 考虑 继续""".split()
 )
 RE_CJK_NAME = re.compile(r"[一-龥·•]{2,5}")
+# 少数民族姓名（“阿依古丽·买买提”）与英文姓名（“Li Wei”）
+RE_DOT_NAME = re.compile(r"[一-龥]{1,8}(?:[·•][一-龥]{1,8}){1,3}")
+RE_LATIN_NAME = re.compile(r"[A-Z][a-z]+(?: ?[A-Z][a-z]+){1,2}")  # 文字层常丢掉空格：“LiWei”
+# 军官证、士兵证等“军字第××××号”
+RE_MIL_ID = re.compile(r"[军士兵警文]{1,2}字?第?\d{6,9}号?")
 RE_ALNUM = re.compile(r"[0-9A-Za-z\-]+")
 
 # 找不到可识别取值时，填写区的宽度（以字高为单位）。签名栏一直延伸到本行下一个字段，签名之后的笔迹都遮盖
@@ -245,6 +250,8 @@ def _valid(kind: str, value: str) -> bool:
         return False
     if kind in ("PERSON", "STAFF"):
         # “主治医师查房记录”里的“查房记录”不是姓名：以病历常用词开头的取值一律不算
+        if RE_DOT_NAME.fullmatch(value) or RE_LATIN_NAME.fullmatch(value):
+            return True
         if not RE_CJK_NAME.fullmatch(value) or value in STOP_WORDS or any(value.startswith(w) for w in NOT_NAME):
             return False
         # 表单用词的前半截（“执行时间”里的“执行”、“评估者”的“评估”）不是姓名：它们一旦当成种子会在全文误遮
@@ -255,9 +262,16 @@ def _valid(kind: str, value: str) -> bool:
             return False
         return True
     if kind in ("ID_CARD",):
+        if RE_MIL_ID.fullmatch(value):
+            return True
         return len(RE_ALNUM.sub("", value)) <= 2 and sum(c.isalnum() for c in value) >= 6
     if kind == "PHONE":
-        return sum(c.isdigit() for c in value) >= 7
+        # 电话号码；或微信号、QQ 号等联系方式（字母开头的账号）
+        return sum(c.isdigit() for c in value) >= 7 or bool(re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{4,29}", value))
+    if kind == "BANK_CARD":
+        return sum(c.isdigit() for c in value) >= 12
+    if kind == "PLATE":
+        return len(value) >= 6 and sum(c.isalnum() for c in value) >= 5
     if kind == "MEDICAL_ID":
         return any(c.isalnum() for c in value) and len(RE_ALNUM.sub("", value)) <= 1 and value not in ("-", "无")
     if kind in ("ORG", "ADDRESS"):
@@ -304,6 +318,13 @@ def _take_value(line: Line, k: int, kind: str) -> tuple[int, int]:
         k += 1
     end = k
     limit = MAX_LEN.get(kind, 20)
+    if kind in ("PERSON", "STAFF") and k < len(text) and text[k].isascii() and text[k].isalpha():
+        # 英文姓名：连续的字母与单个空格
+        while end < len(text) and end - k < 30 and (text[end].isascii() and text[end].isalpha() or text[end] == " " and end + 1 < len(text) and text[end + 1].isalpha()):
+            end += 1
+        return k, end
+    if kind in ("PERSON", "STAFF") and any(c in "·•" for c in text[k : k + 9]):
+        limit = 15  # 少数民族姓名较长
     while end < len(text) and end - k < limit:
         if end > k and _gap(line, end - 1, end) > (2.5 if kind in ("ADDRESS", "ORG") else 1.6):
             break
@@ -314,7 +335,7 @@ def _take_value(line: Line, k: int, kind: str) -> tuple[int, int]:
             break
         if kind in ("PERSON", "STAFF") and not ("一" <= ch <= "龥" or ch in "·•"):
             break
-        if kind in ("PHONE", "ID_CARD", "MEDICAL_ID") and not (ch.isalnum() or ch in "-－— "):
+        if kind in ("PHONE", "ID_CARD", "MEDICAL_ID", "BANK_CARD", "PLATE") and not (ch.isalnum() or ch in "-－— _·•"):
             break
         end += 1
     return k, end

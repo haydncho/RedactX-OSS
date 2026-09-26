@@ -32,7 +32,12 @@ PROSE_MARKS = "，。；、（"
 AFTER_NAME = ("主任", "代为", "护士", "医师", "医生", "大夫", "教授", "表示", "要求")
 # 人名后面紧跟药名后半截时，其实是药名的前半截（“林可霉素”认成“林可”）
 DRUG_TAILS = ("霉素", "沙星", "西林", "他汀", "洛尔", "地平", "普利", "沙坦", "替丁", "拉唑", "咪唑", "硝唑", "韦林", "卡因", "松片", "片", "胶囊", "注射液", "颗粒", "口服液")
-STAFF_CUES = ("医师", "医生", "主任", "护士", "护师", "教授", "大夫", "术者", "助手", "麻醉", "查房", "会诊")
+# 判断人名身份的线索：离人名最近的线索决定类型（医护人员 / 患者与联系人），一样近时算患者与联系人
+STAFF_CUES = ("医师", "医生", "主任", "护士长", "护士", "护师", "教授", "大夫", "术者", "助手", "麻醉", "主刀", "查房", "会诊", "院长", "药师", "技师", "治疗师")
+PERSON_CUES = ("患者", "病人", "家属", "之女", "之子", "女儿", "儿子", "妻子", "丈夫", "母亲", "父亲", "配偶", "陪护", "陪同", "亲属", "监护人",
+               "代为", "本人", "女婿", "儿媳", "孙女", "孙子", "外甥", "联系")
+CUE_WINDOW = 8
+JOINERS = ("、", "和", "与", "及")  # 并列的人名身份相同
 
 _lock = threading.Lock()
 _model = None  # (session, tokenizer, labels)；None 表示未加载，False 表示没有模型
@@ -180,16 +185,52 @@ def page_names(page: PageData, enabled: set[str] | None = None) -> list[Hit]:
     return hits
 
 
+def _cue_dist(text: str, a: int, b: int, cues) -> float:
+    """人名 [a, b) 前后 CUE_WINDOW 字内离得最近的线索距离；没有时为无穷大。"""
+    best = float("inf")
+    for c in cues:
+        k = text.rfind(c, max(0, a - CUE_WINDOW - len(c)), a)
+        if k >= 0:
+            best = min(best, a - (k + len(c)))
+        k = text.find(c, b, b + CUE_WINDOW + len(c))
+        if k >= 0:
+            best = min(best, k - b)
+    return best
+
+
+def _roles(text: str, spans: list[tuple[int, int]]) -> list[str]:
+    """逐个人名定类型：最近的线索决定；用“、”“和”等并列的人名，按其中线索最近的一个统一。"""
+    dists = [(_cue_dist(text, a, b, STAFF_CUES), _cue_dist(text, a, b, PERSON_CUES)) for a, b in spans]
+    groups, cur = [], [0] if spans else []
+    for k in range(1, len(spans)):
+        if text[spans[k - 1][1] : spans[k][0]] in JOINERS:
+            cur.append(k)
+        else:
+            groups.append(cur)
+            cur = [k]
+    if cur:
+        groups.append(cur)
+    roles = [""] * len(spans)
+    for g in groups:
+        ds = min(dists[k][0] for k in g)
+        dp = min(dists[k][1] for k in g)
+        for k in g:
+            roles[k] = "STAFF" if ds < dp else "PERSON"
+    return roles
+
+
 def _to_hits(page: PageData, text: str, where: list[tuple[int, int]], found, enabled: set[str]) -> list[Hit]:
     hits = []
+    kept = []
     for a, b, s in found:
         while b - a > 1 and any(text[b - 1 :].startswith(w) for w in AFTER_NAME):
             b -= 1
         v = text[a:b]
         if s < MIN_SCORE or not _is_name(v) or any(text[b:].startswith(t) for t in DRUG_TAILS):
             continue
-        ctx = text[max(0, a - 4) : a] + "|" + text[b : b + 4]
-        typ = "STAFF" if any(c in ctx for c in STAFF_CUES) else "PERSON"
+        kept.append((a, b, s))
+    for (a, b, s), typ in zip(kept, _roles(text, [(a, b) for a, b, _ in kept])):
+        v = text[a:b]
         if typ not in enabled:
             typ = "PERSON" if "PERSON" in enabled else "STAFF"
         # 跨行的人名拆成每行一个命中

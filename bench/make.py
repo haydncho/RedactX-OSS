@@ -15,6 +15,8 @@
   scanocr  可搜索 PDF：扫描图像加不可见的打印文字层（手写不在文字层里）
   harsh    150 DPI 低质量扫描：重噪点、模糊、强 JPEG 压缩、歪斜可达 2.5°
   photo    手机拍照：透视变形、不均匀光照与斜向阴影、深色桌面背景
+idtext、idscan 只有一页患者信息登记表（护照、港澳通行证、军官证、医保卡号、带空格的银行卡号、带分机的座机、+86 手机、邮箱、
+  微信号、带“·”的车牌与新能源车牌、少数民族姓名、复姓、英文姓名），分别为文字层与白纸扫描。
 harsh、photo 另加第 7 页护理记录单（表格里的护士签名、一格两人签名、手写记录里的家属姓名、压在签名上的科室章）。
 输出 docs/<名称>.pdf 与 truth/<名称>.json（标准答案，坐标为归一化页面坐标）。
 """
@@ -48,6 +50,9 @@ VARIANTS = {
     # 加难形态：多一页护理记录单（第 7 页）
     "harsh": [("scan", 150, "white", False, frozenset({"lowq"}))] * 7,
     "photo": [("scan", 200, "white", False, frozenset({"photo"}))] * 7,
+    # 覆盖面：只有第 8 页患者信息登记表（各类证件号、联系方式、特殊写法的姓名），文字层与扫描各一
+    "idtext": [None] * 7 + [_T],
+    "idscan": [None] * 7 + [_S200],
 }
 # 这些形态按复印机 MRC 分层压缩写出
 MRC_VARIANTS = {"mrc"}
@@ -60,7 +65,11 @@ def build(case_seed: int, variant: str, out_dir: Path) -> Path:
     rng = random.Random(case_seed * 7919 + len(variant))
     w = render.Writer(chars)
     truth, scans = [], []
-    for i, (p, mode) in enumerate(zip(pages, VARIANTS[variant])):
+    i = -1
+    for p, mode in zip(pages, VARIANTS[variant]):
+        if mode is None:
+            continue  # 这种形态不含这一页
+        i += 1
         if mode[0] == "text":
             items = w.text_page(p, rng, watermark=mode[1])
         else:
@@ -80,7 +89,7 @@ def build(case_seed: int, variant: str, out_dir: Path) -> Path:
         render.write_mrc_pdf(scans, pdf_path)
     else:
         w.save(pdf_path)
-    meta = {"name": name, "variant": variant, "case_seed": case_seed, "pages": len(VARIANTS[variant]), "items": truth}
+    meta = {"name": name, "variant": variant, "case_seed": case_seed, "pages": i + 1, "items": truth}
     (out_dir / "truth" / f"{name}.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     return pdf_path
 

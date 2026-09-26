@@ -106,7 +106,8 @@ def make_doc(rng: random.Random) -> tuple[str, list[tuple[int, int, str]]]:
                 key = s[i + 1 : j]
                 v = vals[key]
                 if key in ctx or key == "S":
-                    spans.append((len(text), len(text) + len(v), "optional" if key == "S" else "name"))
+                    role = "STAFF" if key[0] in "DN" else "PERSON"
+                    spans.append((len(text), len(text) + len(v), "optional" if key == "S" else "name", role))
                 text += v
                 i = j + 1
             else:
@@ -126,32 +127,39 @@ def to_page(text: str, rng: random.Random) -> tuple[PageData, list[int]]:
     return PageData(index=0, width=1000, height=40 + 30 * len(lines) + 40, lines=lines, text_source="text"), starts
 
 
-def baseline(page: PageData) -> list[tuple[int, int, int]]:
-    """识别引擎（规则、字段锚定、NER、全文追踪），只取人名类命中。返回 (行, 起, 止)。"""
+def baseline(page: PageData) -> list[tuple[int, int, int, str]]:
+    """识别引擎（规则、字段锚定、NER、全文追踪），只取人名类命中。返回 (行, 起, 止, 类型)。"""
     from redactx.detect import engine
 
     enabled = {"PERSON", "STAFF"}
     hits, _ = engine.page_hits(page, enabled, [])
     seeds = {v: t for v, t in engine.collect_seeds(hits, []).items() if t in enabled}
     hits += engine.propagate(page, seeds, hits)
-    return [(h.line, h.start, h.end) for h in hits if h.type in enabled]
+    return [(h.line, h.start, h.end, h.type) for h in hits if h.type in enabled]
 
 
 def score(docs, predict) -> dict:
-    total = covered = 0
+    total = covered = typed_right = 0
+    confusion: Counter = Counter()
     fp_runs: Counter = Counter()
     chars = 0
     for text, spans, page, starts in docs:
         chars += len(text)
-        hit = set()
-        for li, a, b in predict(page):
-            hit.update(range(starts[li] + a, starts[li] + b))
+        hit, types = set(), {}
+        for li, a, b, t in predict(page):
+            for k in range(starts[li] + a, starts[li] + b):
+                hit.add(k)
+                types[k] = t
         allowed = set()
-        for a, b, kind in spans:
+        for a, b, kind, role in spans:
             allowed.update(range(a, b))
             if kind == "name":
                 total += 1
-                covered += all(k in hit for k in range(a, b))
+                if all(k in hit for k in range(a, b)):
+                    covered += 1
+                    got = types.get(a)
+                    typed_right += got == role
+                    confusion[(role, got)] += 1
         run = ""
         for k in range(len(text) + 1):
             if k < len(text) and k in hit and k not in allowed and text[k] != "\n":
@@ -160,7 +168,8 @@ def score(docs, predict) -> dict:
                 fp_runs[run] += 1
                 run = ""
     n_fp = sum(fp_runs.values())
-    return {"names": total, "recall": covered / max(total, 1), "fp": n_fp, "fp_per_1k": 1000 * n_fp / max(chars, 1), "fp_top": fp_runs.most_common(12)}
+    return {"names": total, "recall": covered / max(total, 1), "fp": n_fp, "fp_per_1k": 1000 * n_fp / max(chars, 1), "fp_top": fp_runs.most_common(12),
+            "type_acc": typed_right / max(covered, 1), "confusion": dict(confusion)}
 
 
 def main() -> None:
@@ -178,7 +187,11 @@ def main() -> None:
         docs.append((text, spans, page, starts))
     r = score(docs, baseline)
     label = "识别（含 NER）" if ner.available() else "识别（未找到 NER 模型）"
-    print(f"{label}：人名 {r['names']}，遮全率 {r['recall']:.1%}，误遮片段 {r['fp']}（每千字 {r['fp_per_1k']:.2f}）")
+    print(f"{label}：人名 {r['names']}，遮全率 {r['recall']:.1%}，误遮片段 {r['fp']}（每千字 {r['fp_per_1k']:.2f}）；"
+          f"类型正确率 {r['type_acc']:.1%}（患者与联系人 / 医护人员）")
+    wrong = {f"{a}→{b}": n for (a, b), n in r["confusion"].items() if a != b}
+    if wrong:
+        print("  类型错误：" + "，".join(f"{k}×{v}" for k, v in sorted(wrong.items())))
     if r["fp_top"]:
         print("  常见误遮：" + "，".join(f"{t}×{n}" for t, n in r["fp_top"]))
 

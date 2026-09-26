@@ -49,13 +49,17 @@ def uscc_ok(s: str) -> bool:
 
 RE_ID = re.compile(r"(?<![0-9A-Za-z])\d{17}[\dXx](?![0-9A-Za-z])")
 RE_MOBILE = re.compile(r"(?<!\d)(?:\+?86[- ]?)?1[3-9]\d[- ]?\d{4}[- ]?\d{4}(?!\d)")
-RE_LANDLINE = re.compile(r"(?<![\d-])0\d{2,3}[-－—]\d{7,8}(?!\d)")
+RE_LANDLINE = re.compile(r"(?<![\d-])0\d{2,3}[-－—]\d{7,8}(?:\s*(?:转|分机|[Ee][Xx][Tt]\.?)\s*\d{1,5})?(?!\d)")
 # 低质量扫描里连字符常被 OCR 认成点、空格或下划线（“电话：0522.3964869”）：前面紧挨着电话字样时才算，免得把金额、小数当成电话
 RE_LANDLINE_LOOSE = re.compile(r"(?:电话|联系|手机|座机|传真|[Tt][Ee][Ll])[^\d]{0,4}(0\d{2,3}[.·_ ]\d{7,8})(?![\d.])")
 RE_BANK = re.compile(r"(?<!\d)\d{16,19}(?!\d)")
+# 分组书写的卡号：“6222 0212 3456 7890 123”
+RE_BANK_GROUPED = re.compile(r"(?<![\d ])\d{4}(?:[ -]\d{4}){3}(?:[ -]\d{1,4})?(?![\d])")
+# 护照、通行证等：前面紧挨着证件字样时才算（字母加 7–9 位数字的写法太常见）
+RE_TRAVEL_DOC = re.compile(r"(?:护照|通行证|台胞证|回乡证|证件)(?:号码|号)?[^\dA-Za-z]{0,6}([A-Z]{1,2}\d{7,9})(?![\dA-Za-z])")
 RE_USCC = re.compile(r"(?<![0-9A-Z])[0-9A-HJ-NP-RTUWXY]{2}\d{6}[0-9A-HJ-NP-RTUWXY]{10}(?![0-9A-Z])")
 RE_EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
-RE_PLATE = re.compile(r"[京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤青藏川宁琼][A-HJ-NP-Z][A-HJ-NP-Z0-9]{4}[A-HJ-NP-Z0-9挂学警港澳]{1,2}")
+RE_PLATE = re.compile(r"[京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤青藏川宁琼][A-HJ-NP-Z][·•.\s]?[A-HJ-NP-Z0-9]{4}[A-HJ-NP-Z0-9挂学警港澳]{1,2}")
 # 日期形态，用于排除
 RE_DATE = re.compile(r"(?:19|20)\d{2}[-/.年]\d{1,2}[-/.月]\d{1,2}|(?:19|20)\d{6}(?:\d{4,6})?")
 
@@ -124,6 +128,14 @@ def find(text: str) -> list[tuple[str, int, int]]:
     for a, b, s in _spans(RE_BANK, text):
         if free(a, b) and luhn_ok(s) and not RE_DATE.fullmatch(s):
             add("BANK_CARD", a, b)
+    for a, b, s in _spans(RE_BANK_GROUPED, text):
+        digits = re.sub(r"\D", "", s)
+        if free(a, b) and 16 <= len(digits) <= 19 and luhn_ok(digits):
+            add("BANK_CARD", a, b)
+    for m in RE_TRAVEL_DOC.finditer(text):
+        a, b = m.span(1)
+        if free(a, b):
+            add("ID_CARD", a, b)
     for a, b, s in _spans(RE_EMAIL, text):
         if free(a, b):
             add("EMAIL", a, b)

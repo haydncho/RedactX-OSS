@@ -215,6 +215,20 @@ def graphic_candidates(img: np.ndarray, lines: list[Line], page: int, dpi: int) 
     return out
 
 
+def beside_name(rect: Rect, names: list[Rect]) -> bool:
+    """图形与某个机构名在同一高度、左右紧挨着（间隔不超过图形宽度的 1.5 倍）：医院 Logo 的典型位置。"""
+    x0, y0, x1, y1 = rect
+    w, h = x1 - x0, y1 - y0
+    for nx0, ny0, nx1, ny1 in names:
+        ncy = (ny0 + ny1) / 2
+        if not (y0 - 0.3 * h <= ncy <= y1 + 0.3 * h):
+            continue
+        gap = nx0 - x1 if nx0 >= x1 - 0.1 * w else x0 - nx1
+        if -0.1 * w <= gap <= 1.5 * w:
+            return True
+    return False
+
+
 def repeated_graphics(cands: list[Graphic], min_corr: float = 0.6, max_shift: float = 0.04) -> list[Graphic]:
     """在另一页相近位置出现、大小相近、外观相似的图形，判为跨页重复（Logo 等）。"""
 

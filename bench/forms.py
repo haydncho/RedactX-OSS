@@ -457,6 +457,65 @@ def nursing_record(c: Case, logo_img) -> Page:
     return p
 
 
+def registration(c: Case, logo_img) -> Page:
+    """患者信息登记表（第 8 页）：各类证件号与联系方式的多种写法，用于检验规则与字段锚定的覆盖面。
+    少数民族姓名、复姓、英文姓名；护照、港澳通行证、军官证、医保卡号；带空格的银行卡号、带“转”分机的座机、
+    +86 手机、邮箱、微信号、带“·”的车牌与新能源车牌。"""
+    rng = random.Random("reg:" + c.patient)  # 独立的随机源：不改变其他页
+    R = "redact"
+    passport = rng.choice("EGP") + f"{rng.randint(10000000, 99999999)}"
+    hk = "C" + f"{rng.randint(10000000, 99999999)}"
+    mil = f"军字第{rng.randint(1000000, 9999999)}号"
+    ins = f"{rng.randint(10, 99)}{rng.randint(100000000, 999999999)}"
+    body = "6222" + "".join(str(rng.randint(0, 9)) for _ in range(14))  # 真实卡号满足 Luhn 校验
+    digits = body + _luhn_digit(body)
+    bank = " ".join(digits[k : k + 4] for k in range(0, 16, 4)) + " " + digits[16:]
+    mobile = f"+86 13{rng.randint(0, 9)} {rng.randint(1000, 9999)} {rng.randint(1000, 9999)}"
+    tel = f"0{rng.randint(510, 799)}-{rng.randint(1000000, 9999999)}转{rng.randint(100, 9999)}"
+    email = rng.choice(["li.wei", "zhang_san88", "wang.fang2020"]) + "@" + rng.choice(["example.com", "mail.example.cn"])
+    wechat = "wxid_" + "".join(rng.choice("abcdefghjkmnpqrstuvwxyz0123456789") for _ in range(10))
+    plate = rng.choice("浙粤苏京沪") + rng.choice("ABCDE") + "·" + f"{rng.randint(10000, 99999)}"
+    ev_plate = rng.choice("浙粤苏京沪") + rng.choice("ABCDE") + "D" + f"{rng.randint(10000, 99999)}"
+    minority = rng.choice(["阿依古丽·买买提", "迪丽娜尔·阿不都", "木合塔尔·吐尔逊"])
+    compound = rng.choice(["欧阳", "司马", "上官", "诸葛"]) + rng.choice(["晓明", "文静", "志远"])
+    english = rng.choice(["Li Wei", "Zhang Min", "Wang Fang"])
+    p = Page("患者信息登记表")
+    _header(p, c, "患者信息登记表", logo_img)
+    rows = [
+        [("姓名", minority, ("PERSON", R), 0), ("英文姓名", english, ("PERSON", R), 300)],
+        [("证件类型", "护照", None, 0), ("护照号码", passport, ("ID_CARD", R), 300)],
+        [("港澳通行证号", hk, ("ID_CARD", R), 0), ("军官证号", mil, ("ID_CARD", R), 300)],
+        [("医保卡号", ins, ("MEDICAL_ID", R), 0), ("银行卡号", bank, ("BANK_CARD", R), 260)],
+        [("手机", mobile, ("PHONE", R), 0), ("单位电话", tel, ("PHONE", R), 260)],
+        [("电子邮箱", email, ("EMAIL", R), 0), ("微信号", wechat, ("PHONE", R), 300)],
+        [("车牌号", plate, ("PLATE", R), 0), ("备用车牌", ev_plate, ("PLATE", R), 300)],
+        [("紧急联系人", compound, ("PERSON", R), 0), ("紧急联系人电话", c.contact_phone, ("PHONE", R), 260)],
+        [("籍贯", "新疆喀什地区疏附县", ("ADDRESS", R), 0), ("民族", "维吾尔族", None, 300)],
+    ]
+    y = 118
+    p.line(40, y - 8, p.w - 40, y - 8)
+    for row in rows:
+        for label, value, truth, dx in row:
+            p.field(46 + dx, y, label, value, 10.5, truth=truth, sep="：", gap=2)
+        y += 30
+        p.line(40, y - 10, p.w - 40, y - 10)
+    y += 16
+    # 正文里的证件号与联系方式（没有字段标签）
+    y = p.flow(52, y, p.w - 104, [("　　患者持护照（", None), (passport, ("ID_CARD", R)), ("）办理入院，费用由家属通过银行卡", None),
+                                   (bank, ("BANK_CARD", R)), ("缴纳，如有疑问请发邮件至", None), (email, ("EMAIL", R)), ("或拨打", None),
+                                   (tel, ("PHONE", R)), ("。", None)])
+    _footer(p, c, 8)
+    return p
+
+
+def _luhn_digit(body: str) -> str:
+    total = 0
+    for k, ch in enumerate(reversed(body)):
+        d = int(ch) * (2 if k % 2 == 0 else 1)
+        total += d - 9 if d > 9 else d
+    return str((10 - total % 10) % 10)
+
+
 def _fake_name(rng, used: set[str]) -> str:
     from .fakes import GIVEN, SURNAMES
 
@@ -472,4 +531,4 @@ def case_pages(c: Case) -> list[Page]:
     第 7 页（护理记录单）只有加难的扫描形态会用到（见 make.VARIANTS）。"""
     lg = logo(c.hospital)
     return [front_page(c, lg), lab_report(c, lg, c.rng), progress_note(c, lg), endoscopy(c, lg, c.rng), daily_note(c, lg), consent(c, lg),
-            nursing_record(c, lg)]
+            nursing_record(c, lg), registration(c, lg)]

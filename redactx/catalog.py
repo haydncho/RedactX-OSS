@@ -22,7 +22,7 @@ ENTITIES = [
     {"code": "BANK_CARD", "name": "银行卡号", "label": "银行卡号", "group": "numbers", "default": True, "default_style": "label"},
     {"code": "USCC", "name": "统一社会信用代码", "label": "机构代码", "group": "numbers", "default": True, "default_style": "label"},
     {"code": "EMAIL", "name": "电子邮箱", "label": "邮箱", "group": "numbers", "default": True, "default_style": "label"},
-    {"code": "PLATE", "name": "车牌号", "label": "车牌", "group": "numbers", "default": False, "default_style": "label"},
+    {"code": "PLATE", "name": "车牌号", "label": "车牌", "group": "numbers", "default": True, "default_style": "label"},
     {"code": "MEDICAL_ID", "name": "病案号、住院号等医疗标识号", "label": "医疗编号", "group": "medical", "default": True, "default_style": "label"},
     {"code": "HANDWRITTEN_FIELD", "name": "手写填写区（字段锚定）", "label": "手写", "group": "handwriting", "default": True, "default_style": "background"},
     {"code": "SIGNATURE", "name": "签名（手写与电子签名）", "label": "签名", "group": "handwriting", "default": True, "default_style": "hatch"},

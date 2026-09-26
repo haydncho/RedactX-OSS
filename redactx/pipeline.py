@@ -288,6 +288,7 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
     page_regions: list[list[Region]] = []
     digest_pages: dict[str, set[int]] = {}
     graphics: list[vision.Graphic] = []
+    org_rects: list[list] = []  # 每页识别出的机构名位置，用于认出紧挨着院名的 Logo
     page_wm: list[list[vision.Watermark]] = []
     org_names: set[str] = set()
     wm_angles: list[float] = []  # 本文档已确认的水印角度，供后面的页转正识别
@@ -345,6 +346,7 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
             regions += [Region("QRCODE", "detector", pd.index, r) for r in vision.codes(work, opts.dpi)]
         if "LOGO" in enabled:
             graphics += vision.graphic_candidates(work, pd.lines, pd.index, opts.dpi)
+            org_rects.append([r for r in (_hits_to_rect(pd, h, strict) for h in hits if h.type == "ORG") if r])
         _preview(img, prev_dir / f"before-{pd.index + 1}.jpg")
         pages.append(pd)
         page_hits.append(hits)
@@ -353,11 +355,21 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
 
     repeated = {d for d, ps in digest_pages.items() if len(ps) >= 2}
     # 扫描页没有图片对象可比，改为比对页眉页脚里的图形：跨页重复的判为 Logo
-    for g in vision.repeated_graphics(graphics):
+    logos = vision.repeated_graphics(graphics)
+    for g in logos:
         page_regions[g.page].append(Region("LOGO", "repeat", g.page, g.rect))
+    # 单页文档无从比对：页眉页脚里紧挨着院名的图形也判为 Logo
+    for g in graphics:
+        if g not in logos and org_rects and vision.beside_name(g.rect, org_rects[g.page]):
+            page_regions[g.page].append(Region("LOGO", "beside-org", g.page, g.rect))
     all_hits = [h for hs in page_hits for h in hs]
     seeds = engine.collect_seeds(all_hits, opts.custom_words)
     seeds = {v: t for v, t in seeds.items() if t in enabled}
+    # 正文里认出的人名，若在本文档的明确字段里出现过（如“主治医师：张三”），按字段的类型记
+    field_types = {h.value: h.type for h in all_hits if h.source == "anchor" and h.seed and h.type in ("PERSON", "STAFF")}
+    for h in all_hits:
+        if h.source == "ner" and h.value in field_types and field_types[h.value] in enabled:
+            h.type = field_types[h.value]
 
     # ---------- 第二遍：传播、打码、自检 ----------
     aliases = Aliases()
