@@ -13,6 +13,9 @@
   hard     白纸扫描加难点：淡粉色低饱和印章压院名、平铺斜向院名水印（压在正文上）、大号连笔签名
   mrc      300 DPI 扫描按复印机 MRC 分层压缩：1 位文字蒙版 + 150 DPI 彩色底图
   scanocr  可搜索 PDF：扫描图像加不可见的打印文字层（手写不在文字层里）
+  harsh    150 DPI 低质量扫描：重噪点、模糊、强 JPEG 压缩、歪斜可达 2.5°
+  photo    手机拍照：透视变形、不均匀光照与斜向阴影、深色桌面背景
+harsh、photo 另加第 7 页护理记录单（表格里的护士签名、一格两人签名、手写记录里的家属姓名、压在签名上的科室章）。
 输出 docs/<名称>.pdf 与 truth/<名称>.json（标准答案，坐标为归一化页面坐标）。
 """
 
@@ -42,6 +45,9 @@ VARIANTS = {
     "hard": [("scan", 200, "white", False, _ALL_HARD)] * 6,
     "mrc": [("scan", 300, "white", False, frozenset())] * 6,
     "scanocr": [("scanocr", 200, "white", False, frozenset())] * 6,
+    # 加难形态：多一页护理记录单（第 7 页）
+    "harsh": [("scan", 150, "white", False, frozenset({"lowq"}))] * 7,
+    "photo": [("scan", 200, "white", False, frozenset({"photo"}))] * 7,
 }
 # 这些形态按复印机 MRC 分层压缩写出
 MRC_VARIANTS = {"mrc"}
