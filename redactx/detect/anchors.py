@@ -116,7 +116,7 @@ def _name_run(text: str, j: int) -> int:
 
 
 def _handwritten_name_after(line: Line, i: int, j: int) -> bool:
-    """通用词后面紧跟的 2–4 个汉字像手写姓名：首字是常见姓氏，并且满足其一——
+    """通用词后面紧跟的 2–4 个汉字像手写姓名：首字是常见姓氏（或独占行尾且识别置信度明显偏低），并且满足其一——
     姓名正好在行尾（整行就是“医生 + 姓名”）；字比标签高出 15% 以上或识别置信度偏低（手写特征）。
     正文里“患者病情好转，……”之类不会触发。"""
     if line.source != "ocr":
@@ -124,10 +124,13 @@ def _handwritten_name_after(line: Line, i: int, j: int) -> bool:
     text = line.text
     k = _name_run(text, j)
     name = text[j:k]
-    if not 2 <= len(name) <= 4 or name in NOT_NAME or name in STOP_WORDS:
+    if not 2 <= len(name) <= 4 or name in NOT_NAME or name in STOP_WORDS or any(name.startswith(w) for w in NOT_NAME if len(w) >= 2):
         return False
     if name[0] not in SURNAMES and name[:2] not in COMPOUND_SURNAMES:
-        return False
+        # 手写姓名的首字常被 OCR 认错（“彭曦涛”认成“壹细羲涛”）：姓名独占行尾且识别置信度明显偏低时，不要求姓氏。
+        # 这类取值证据弱，只遮本处，不作全文追踪的种子
+        chars = line.chars[j:k]
+        return k == len(text) and sum(c.score for c in chars) / len(chars) < 0.8
     if k < len(text) and text[k] not in PUNCT_PRE and not _match_at(text, k, STOP_WORDS, _STOP_MAX) and _gap(line, k - 1, k) <= 0.4:
         return False
     if k == len(text):
