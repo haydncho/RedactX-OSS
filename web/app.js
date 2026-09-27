@@ -775,7 +775,8 @@
       btn.setAttribute("aria-label", label);
       if (btn.dataset.tip != null) btn.dataset.tip = label; else btn.title = label;
     };
-    apply(!!state.sumCollapsed);
+    state.sumCollapsed ??= true;  // 默认收起，用户展开过就记住
+    apply(state.sumCollapsed);
     btn.addEventListener("click", () => { state.sumCollapsed = !state.sumCollapsed; save(); apply(state.sumCollapsed); });
   }
 
