@@ -61,6 +61,38 @@ deploy/container/dev.sh --rebuild    # 依赖（pyproject.toml、Containerfile�
 
 Python 代码改动后服务自动重启（正在处理的任务会中断），Web 页刷新浏览器即可。容器名与端口同 `run.sh`，两者互相替换；最终部署用 `run.sh` 按版本号生成镜像。构建前须先按方式一导出正文人名识别模型到 `models/ner/`，镜像会把它一并打包。数据目录挂载在 `data-container/`，服务只绑定 127.0.0.1。
 
+### 方式三：Docker
+
+Linux 服务器或装了 Docker 的机器上用 Docker Compose（v2）。镜像与方式二共用 `deploy/container/Containerfile`，依赖锁文件同时适用于 x86_64 与 arm64。
+
+```bash
+# 1. 导出正文人名识别模型（一次性，见方式一），镜像会把 models/ner/ 一并打包
+# 2. 配置：管理员 Key、端口、并行页数等
+cp deploy/docker/.env.example deploy/docker/.env
+# 3. 构建并启动
+docker compose -f deploy/docker/compose.yaml up -d --build
+# 4. 给使用者生成用户 Key（自动识别 Docker）
+deploy/keys.sh keys create "演示-张医生"
+```
+
+打开 http://127.0.0.1:8090 。与方式二相同的加固：只绑定 127.0.0.1、非 root 用户、根文件系统只读（可写的只有数据卷与 `/tmp`）、去掉全部 Linux 能力，另加 `no-new-privileges`。数据放在命名卷 `redactx_redactx-data` 里（继承镜像里 `/data` 的属主；挂载宿主机目录会因属主不对写不进去）。升级：`git pull` 后再执行第 3 步；停止：`docker compose -f deploy/docker/compose.yaml down`（数据卷保留，加 `-v` 连数据一起删）。
+
+`.dockerignore` 把 `example/`、`local/`、各数据目录、`.env` 与所有 PDF、扫描件、Office 文档排除在构建上下文之外，病案样本不会被发送给构建进程。
+
+Word 等文档的转换沙箱需要在容器内创建用户命名空间，Docker 默认的 seccomp 配置通常不允许，服务检测到后会退回直接运行 LibreOffice 并记一条警告（Apple container 下沙箱可用）。要求必须有沙箱时在 `.env` 里设 `REDACTX_REQUIRE_SANDBOX=1`：没有沙箱时拒绝转换 Word 等文档，PDF 与图片照常处理。
+
+## 示例数据
+
+试用、演示或联调用的示例文档，全部为虚构数据（姓名、机构、号码随机生成），可以放心上传：
+
+```bash
+uv pip install --python .venv/bin/python -e ".[bench]"
+.venv/bin/python -m bench.samples                 # 写到 samples/（已加入 .gitignore），约 15 秒
+.venv/bin/python -m bench.samples --quick --truth # 跳过两份长文档；另存标准答案（应遮、应留的位置与类型）
+```
+
+生成两份 30 多页的住院全套材料（系统导出 38 页、扫描件 37 页：病案首页、入院记录、病程、手术与麻醉记录、医嘱、体温单、护理记录、检验检查、病理、出院记录、诊断证明、处方，以及费用明细清单、医保结算清单、收费电子票据、预交金与出院结算单，金额前后一致），各种形态的短病案（系统导出、带水印、白纸扫描、手机拍照、难点扫描、患者信息登记表），以及 Markdown、纯文本各一份。
+
 ## 接口
 
 | 方法 | 路径 | 说明 |
@@ -122,6 +154,7 @@ deploy/keys.sh jobs clear --yes               # 清空全部任务
 | `REDACTX_PAGE_WORKERS` | `2` | 单个任务内同时打码、自检的页数；每多一页内存峰值约多 0.5 GB，设为 1 时最省内存 |
 | `REDACTX_MAX_UPLOAD_MB` | `30` | 单个文件上传上限（MB） |
 | `REDACTX_API_KEY` | 无 | 管理员 Key，设置后启用 API Key 校验；用户 Key 用 `deploy/keys.sh` 生成 |
+| `REDACTX_REQUIRE_SANDBOX` | 无 | 设为 `1` 时，无法为文档转换创建沙箱就拒绝转换 Word 等文档（默认退回直接运行并记警告） |
 
 ## 目录
 
@@ -135,9 +168,11 @@ redactx/          识别与打码引擎
   pipeline.py     两遍处理流水线与栅格化重建
 service/          FastAPI 接口与任务管理
 web/              Web 页（纯静态，不加载外部资源）
-deploy/container/ Apple container 镜像与启动脚本
+deploy/container/ 镜像（Containerfile、依赖锁文件）与 Apple container 启动脚本
+deploy/docker/    Docker Compose 部署
+deploy/keys.sh    后台管理：生成、吊销用户 API Key，清空任务
 tests/            单元测试（全部使用虚构数据）
-bench/            合成评估集：生成虚构病案并统计遮全率、误遮、耗时与性能
+bench/            合成评估集（虚构病案、遮全率、误遮、耗时与性能）与示例数据（bench.samples）
 ```
 
 ## 评估

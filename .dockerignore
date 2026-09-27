@@ -1,11 +1,39 @@
-.venv
-.git
-data
-example
-**/__pycache__
-*.pdf
-.claude
-data-container
-bench
+# 构建上下文排除私有与无关的内容：病案样本、本地材料、处理数据绝不能进入构建上下文。
+# （镜像里只有 Containerfile 明确 COPY 的 redactx/、service/、web/、models/ner/ 与依赖锁文件）
+# 注：Apple container 的构建器不支持“先 * 全部排除、再放行子目录”的写法，这里用排除清单
+example/
+local/
+protype/
+data/
+data-container/
+data-docker/
+samples/
+templates/
 handoff.md
-*.egg-info
+# 部署用的环境变量（含 API Key）
+**/.env
+*.egg-info/
+.git/
+.claude/
+.venv/
+.wrangler/
+.pytest_cache/
+**/__pycache__
+**/*.pyc
+bench/
+train/
+docs/
+site/
+tests/
+models/detector/
+# 兜底：任何位置的文档、扫描件与图片（web/ 里的界面图片除外）
+**/*.pdf
+**/*.tif
+**/*.tiff
+**/*.jpg
+**/*.jpeg
+**/*.doc
+**/*.docx
+**/*.wps
+**/*.xls
+**/*.xlsx

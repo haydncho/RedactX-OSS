@@ -27,3 +27,18 @@ def test_sanitize_keeps_markdown_structure_and_data_images():
 def test_sandbox_hides_data_dir_after_binding_workdir():
     # 先绑定工作目录，再用 tmpfs 盖住数据目录，顺序不能反
     assert _SANDBOX_SH.index("mount --bind") < _SANDBOX_SH.index("mount -t tmpfs")
+
+
+def test_require_sandbox_refuses_conversion(monkeypatch, tmp_path):
+    import pytest
+
+    from redactx import convert
+    from redactx.config import settings
+
+    monkeypatch.setattr(convert, "soffice_path", lambda: "/usr/bin/soffice")
+    monkeypatch.setattr(convert, "_sandbox_state", False)
+    monkeypatch.setattr(settings, "require_sandbox", True)
+    src = tmp_path / "a.md"
+    src.write_text("# 标题", encoding="utf-8")
+    with pytest.raises(convert.ConvertError, match="沙箱"):
+        convert.to_pdf(src, "md", tmp_path / "work")

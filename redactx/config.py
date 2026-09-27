@@ -35,6 +35,8 @@ class Settings:
     workers: int = int(os.environ.get("REDACTX_WORKERS", "1"))
     # 单个任务内第二遍（打码、自检、保存）同时处理的页数；每多一页内存峰值约多 0.5 GB
     page_workers: int = int(os.environ.get("REDACTX_PAGE_WORKERS", "2"))
+    # 无法为文档转换创建沙箱时拒绝转换 Word 等文档（默认退回直接运行并记警告）
+    require_sandbox: bool = os.environ.get("REDACTX_REQUIRE_SANDBOX", "") in ("1", "true", "yes")
     api_key: str | None = os.environ.get("REDACTX_API_KEY") or None
     max_upload_mb: int = int(os.environ.get("REDACTX_MAX_UPLOAD_MB", "30"))
     max_pages: int = int(os.environ.get("REDACTX_MAX_PAGES", "500"))

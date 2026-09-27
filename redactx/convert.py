@@ -172,7 +172,11 @@ def to_pdf(src: Path, kind: str, work_dir: Path, timeout: int = 240) -> Path:
         convert_to = "pdf"
     # 每次转换使用独立的配置目录，允许并发且互不干扰
     profile = Path(tempfile.gettempdir()) / f"redactx-lo-{uuid.uuid4().hex}"
+    from .config import settings
+
     sandbox = _sandbox_ok()
+    if not sandbox and settings.require_sandbox:
+        raise ConvertError("本机无法为文档转换创建沙箱，已按配置（REDACTX_REQUIRE_SANDBOX）拒绝转换 Word 等文档；PDF 与图片不受影响")
     mount = Path(tempfile.mkdtemp(prefix="redactx-sbx-")) if sandbox else None
     base = mount if sandbox else work_dir
     cmd = [
@@ -184,8 +188,6 @@ def to_pdf(src: Path, kind: str, work_dir: Path, timeout: int = 240) -> Path:
         str(base / inp.name),
     ]
     if sandbox:
-        from .config import settings
-
         cmd = ["unshare", "-rnm", "sh", "-c", _SANDBOX_SH, "sh", str(work_dir.resolve()), str(mount), str(Path(settings.data_dir).resolve()), *cmd]
     try:
         proc = subprocess.run(cmd, capture_output=True, timeout=timeout, env={**os.environ, "HOME": str(profile)})

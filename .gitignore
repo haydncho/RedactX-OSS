@@ -2,6 +2,11 @@
 example/
 data/
 data-container/
+data-docker/
+# bench.samples 生成的示例文档（虚构数据，可随时重新生成）
+samples/
+# Docker 部署的环境变量（含 API Key）
+deploy/docker/.env
 protype/
 bench/out/
 *.pdf

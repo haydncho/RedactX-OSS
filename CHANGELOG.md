@@ -1,5 +1,12 @@
 # 更新日志
 
+## 未发布
+
+- 部署：新增 Docker 方式（`deploy/docker/compose.yaml`）。与 Apple container 共用镜像；只绑定 127.0.0.1、非 root、根文件系统只读、去掉全部能力、`no-new-privileges`，数据放命名卷；`.env` 配置管理员 Key 等（模板 `.env.example`）。依赖锁文件经核对同时适用于 x86_64 与 arm64。`deploy/keys.sh` 自动识别 Apple container 与 Docker。
+- 部署：新增 `.dockerignore`，病案样本、本地材料、数据目录、`.env` 与所有 PDF、扫描件、Office 文档不进入构建上下文（已实测构建上下文只含所需的 63 个文件）。
+- 配置：`REDACTX_REQUIRE_SANDBOX=1` 时，无法为文档转换创建沙箱（如 Docker 默认安全配置下）就拒绝转换 Word 等文档，PDF 与图片照常处理；默认退回直接运行并记警告。
+- 示例数据：`python -m bench.samples` 一条命令生成一组虚构示例文档到 `samples/`：两份 30 多页的住院全套材料（含费用明细、医保结算清单、收费票据，金额前后一致；系统导出与扫描件各一）、各形态短病案、Markdown 与纯文本；`--truth` 另存标准答案。
+
 ## 0.2.0 — 2026-09-27
 
 任务按 API Key 隔离与后台 Key 管理；一轮安全加固（路径穿越、文档转换沙箱、安全响应头、上传与像素上限、依赖与模型校验、容器只读）；扫描件提速约 27%；网页与后端重构；介绍站与手机端体验改进。
