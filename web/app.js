@@ -377,7 +377,13 @@
     $("#pg-prev").disabled = page <= 1;
     $("#pg-next").disabled = page >= report.pages;
     document.querySelectorAll(".thumb").forEach((t, i) => t.setAttribute("aria-current", String(i + 1 === page)));
-    const cur = document.querySelectorAll(".thumb")[page - 1]; cur?.scrollIntoView({ block: "nearest" });
+    // 只在缩略图列（手机上是横排）里滚动到当前页，不带动整个页面
+    const cur = document.querySelectorAll(".thumb")[page - 1];
+    if (cur) {
+      const box = $("#thumbs"), b = box.getBoundingClientRect(), c = cur.getBoundingClientRect();
+      if (c.left < b.left) box.scrollLeft -= b.left - c.left + 4; else if (c.right > b.right) box.scrollLeft += c.right - b.right + 4;
+      if (c.top < b.top) box.scrollTop -= b.top - c.top + 4; else if (c.bottom > b.bottom) box.scrollTop += c.bottom - b.bottom + 4;
+    }
     const [a, b] = await Promise.all([imgSrc(preview(page, "after")), imgSrc(preview(page, "before"))]);
     const img = $("#img-after");
     if (img.getAttribute("src") !== a) $("#stage").classList.add("img-loading");
@@ -814,9 +820,10 @@
     blobCache.clear(); typeFilter = null;
     showJob();
     showResultSkeleton();
+    // 直接滚到任务面板（手机上它在设置区下面，滚到页顶看到的是设置）；先看到骨架，结果到了原地替换
+    $("#job").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
     const j = await (await api(`/v1/jobs/${id}`)).json();
     await loadResult(j);
-    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   // ---------- 启动 ----------

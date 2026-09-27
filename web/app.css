@@ -586,4 +586,5 @@ dialog.bottom-sheet h3 { margin: 4px 4px 12px; font-size: 15px; }
   .job-actions:not(:has(> .btn:not([hidden]):not(#btn-new))) #btn-new:hover { background: #0761d1; }
   .job-actions:not(:has(> .btn:not([hidden]):not(#btn-new))) #btn-new .ic { stroke: #fff; }
 }
-
+/* 滚到任务面板时不被固定的顶部栏挡住 */
+#job { scroll-margin-top: 76px; }
