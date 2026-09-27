@@ -147,7 +147,13 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
 .presets { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .preset { text-align: left; border: 0; background: var(--canvas); box-shadow: 0 0 0 1px var(--hairline); border-radius: 8px; padding: 10px; cursor: pointer; display: grid; gap: 4px; transition: box-shadow .15s, background .15s; }
 .preset:hover { box-shadow: 0 0 0 1px var(--hairline-strong); }
-.preset[aria-checked="true"] { box-shadow: 0 0 0 1.5px var(--primary); background: var(--canvas-soft); }
+.preset { position: relative; }
+.preset[aria-checked="true"] { box-shadow: 0 4px 14px -8px rgba(124, 58, 237, .45); background: var(--canvas-soft); }
+/* 选中：彩色渐变边框（伪元素加遮罩，只露出 1.5px 边框，不改变卡片尺寸） */
+.preset[aria-checked="true"]::before { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px; pointer-events: none;
+  background: linear-gradient(135deg, #0070f3, #7c3aed 40%, #ec4899 70%, #f59e0b);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
 .preset b { font-weight: 600; font-size: 13px; letter-spacing: -0.02em; margin-top: 4px; }
 .preset small { color: var(--mute); font-size: 11.5px; line-height: 15px; }
 .swatch { height: 18px; border-radius: 4px; background: #fbfbfa; box-shadow: inset 0 0 0 1px #ebebeb; display: flex; align-items: center; gap: 4px; padding: 0 6px; }
