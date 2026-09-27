@@ -37,3 +37,4 @@ local/
 bench/train/
 train/runs/
 train/data/
+site/_redirects

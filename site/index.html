@@ -37,6 +37,7 @@
     <a href="#how">原理</a>
     <a href="#eval">评估</a>
     <a href="#deploy">部署</a>
+    <a class="demo-link" href="/app" rel="noopener">在线演示</a>
     <a class="gh" href="https://github.com/haydncho/RedactX-OSS" rel="noopener"><svg class="ic" aria-hidden="true"><use href="#i-github"/></svg><span>GitHub</span></a>
     <button type="button" class="theme" id="theme" aria-label="切换主题"><svg class="ic sun" aria-hidden="true"><use href="#i-sun"/></svg><svg class="ic moon" aria-hidden="true"><use href="#i-moon"/></svg></button>
   </nav>
@@ -56,9 +57,11 @@
           <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Apache-2.0 开源</li>
         </ul>
         <div class="cta">
-          <a class="btn primary" href="#deploy">部署到本机<svg class="ic" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+          <a class="btn primary" href="/app" rel="noopener">打开在线演示<svg class="ic" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+          <a class="btn" href="#deploy">部署到本机</a>
           <a class="btn" href="https://github.com/haydncho/RedactX-OSS/releases/latest" rel="noopener"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>下载最新版本</a>
         </div>
+        <p class="demo-note">在线演示是临时开放的演示环境：需要向项目负责人索取 API Key（打开后点右上角“API Key”填入）；请只上传合成或测试文件，不要上传真实病案。</p>
       </div>
       <figure class="hero-shot">
         <img class="shot light" src="images/result-light.webp" width="1440" height="860" alt="锐消 Web 页：脱敏后的病案首页，姓名、证件号、电话等处换成了浅色标签，右侧为遮盖统计" fetchpriority="high">
@@ -167,7 +170,7 @@ curl -o 脱敏.pdf http://127.0.0.1:8090/v1/jobs/job_…/result</code></pre>
       <p><b>锐消 RedactX</b> · Apache-2.0 开源 · <a href="https://github.com/haydncho/RedactX-OSS" rel="noopener">GitHub</a> · <a href="https://github.com/haydncho/RedactX-OSS/blob/main/CHANGELOG.md" rel="noopener">更新日志</a></p>
       <p class="muted">第三方模型：RapidOCR 附带的 PP-OCR 模型（Apache-2.0）；正文人名识别 shibing624/bert4ner-base-chinese（Apache-2.0）。</p>
     </div>
-    <p class="muted">本站只是项目介绍，不提供在线处理，不收集任何文件。页面上的截图均为合成数据。</p>
+    <p class="muted">本站只是项目介绍，不收集任何文件。“在线演示”跳转到项目负责人本机临时开放的服务，仅供演示，请勿上传真实病案。页面上的截图均为合成数据。</p>
   </div>
 </footer>
 
