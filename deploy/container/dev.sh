@@ -36,6 +36,11 @@ else
   fi
 fi
 
+# 需要时把 API Key、导出开关传进容器（例如通过隧道对外演示时必须设置 API Key）
+EXTRA=()
+[ -n "${REDACTX_API_KEY:-}" ] && EXTRA+=(-e "REDACTX_API_KEY=$REDACTX_API_KEY")
+[ -n "${REDACTX_ALLOW_EXPORT:-}" ] && EXTRA+=(-e "REDACTX_ALLOW_EXPORT=$REDACTX_ALLOW_EXPORT")
+
 container rm -f "$NAME" >/dev/null 2>&1 || true
 container run -d --name "$NAME" \
   -p "127.0.0.1:${PORT}:8000" \
@@ -45,6 +50,7 @@ container run -d --name "$NAME" \
   --mount "type=bind,source=$ROOT/web,target=/app/web,readonly" \
   --mount "type=bind,source=$ROOT/models/ner,target=/app/models/ner,readonly" \
   -e WATCHFILES_FORCE_POLLING=true \
+  ${EXTRA[@]+"${EXTRA[@]}"} \
   -m 6G -c 6 \
   "$IMAGE" \
   uvicorn service.app:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/redactx --reload-dir /app/service
