@@ -19,8 +19,8 @@ import numpy as np
 from PIL import Image
 
 from . import ocr, redact
-from .catalog import ENTITY_BY_CODE, STYLE_CODES
-from .pipeline import _preview, _rebuild
+from .catalog import ENTITY_BY_CODE, STYLE_CODES, resolve_style
+from . import output
 
 
 class ReviewError(Exception):
@@ -60,7 +60,7 @@ def _clean(raw, pages: int, default_style) -> list[dict]:
 def _draw(img: np.ndarray, items: list[dict], rotation: int, label_text: str, dpi: int) -> np.ndarray:
     """在转正后的画面上打码（标签文字方向与自动打码一致），再转回原方向。"""
     oh, ow = img.shape[:2]
-    work = ocr._rotate(img, rotation).copy()
+    work = ocr.rotate(img, rotation).copy()
     rh, rw = work.shape[:2]
     back = (360 - rotation) % 360
     rng = np.random.default_rng()
@@ -68,11 +68,11 @@ def _draw(img: np.ndarray, items: list[dict], rotation: int, label_text: str, dp
         if it["style"] == "watermark":  # 水印已在打码前的页面上擦除
             continue
         x0, y0, x1, y1 = it["box"]
-        rect = ocr._rect_unrotate((x0 * ow, y0 * oh, x1 * ow, y1 * oh), back, rw, rh) if rotation else (x0 * ow, y0 * oh, x1 * ow, y1 * oh)
+        rect = ocr.rect_unrotate((x0 * ow, y0 * oh, x1 * ow, y1 * oh), back, rw, rh) if rotation else (x0 * ow, y0 * oh, x1 * ow, y1 * oh)
         label = ENTITY_BY_CODE[it["type"]]["label"]
         text = it["alias"] if (label_text == "alias" or it["style"] == "replace") and it["alias"] else label
         redact.apply(work, rect, it["style"], text, rng, int(dpi * 0.13))
-    return ocr._rotate(work, back)
+    return ocr.rotate(work, back)
 
 
 def apply(out_dir: Path, raw_items) -> dict:
@@ -80,8 +80,8 @@ def apply(out_dir: Path, raw_items) -> dict:
     report = json.loads((out_dir / "report.json").read_text(encoding="utf-8"))
     layout = json.loads((out_dir / "layout.json").read_text(encoding="utf-8"))
     styles = report.get("options", {}).get("styles", {})
-    default = report.get("options", {}).get("default_style", "label")
-    items = _clean(raw_items, report["pages"], lambda t: styles.get(t) or ENTITY_BY_CODE[t].get("default_style") or default)
+    default = report.get("options", {}).get("default_style")
+    items = _clean(raw_items, report["pages"], lambda t: resolve_style(t, styles, default))
     orig_dir = out_dir / "orig"
     editable = orig_dir.is_dir()
 
@@ -96,7 +96,7 @@ def apply(out_dir: Path, raw_items) -> dict:
     for p in changed:
         page_items = [it for it in items if it["page"] == p]
         if editable:
-            base, todo = orig_dir / f"{p:05d}.jpg", page_items
+            base, todo = output.page_file(orig_dir, p), page_items
         else:
             left = Counter(added)
             todo = []
@@ -104,14 +104,14 @@ def apply(out_dir: Path, raw_items) -> dict:
                 if left[_key(it)] > 0:
                     left[_key(it)] -= 1
                     todo.append(it)
-            base = out_dir / "pages" / f"{p:05d}.jpg"
+            base = output.page_file(out_dir / "pages", p)
         img = np.array(Image.open(base).convert("RGB"))
         img = _draw(img, todo, rotations.get(p, 0), layout["label_text"], layout["dpi"])
-        Image.fromarray(img).save(out_dir / "pages" / f"{p:05d}.jpg", "JPEG", quality=88, dpi=(layout["dpi"], layout["dpi"]))
-        _preview(img, out_dir / "preview" / f"after-{p}.jpg")
+        output.save_page(img, out_dir / "pages", p, layout["dpi"])
+        output.preview(img, out_dir / "preview" / f"after-{p}.jpg")
 
     if changed:
-        _rebuild(layout["kind"], layout["sizes"], out_dir / "pages", out_dir, report["pages"])
+        output.rebuild(layout["kind"], layout["sizes"], out_dir / "pages", out_dir, report["pages"])
     report["items"] = items
     report["counts"] = dict(Counter(it["type"] for it in items))
     rv = report.setdefault("review", {})
@@ -133,7 +133,7 @@ def export(out_dir: Path, dest: Path) -> dict:
     images, anns = [], []
     with zipfile.ZipFile(dest, "w", zipfile.ZIP_STORED) as z:
         for p in range(1, report["pages"] + 1):
-            src = orig / f"{p:05d}.jpg"
+            src = output.page_file(orig, p)
             if not src.exists():
                 continue
             with Image.open(src) as im:

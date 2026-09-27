@@ -174,8 +174,8 @@ def main() -> None:
             continue
         if pd.text_source != "text":
             pd.rotation = ocr.detect_orientation(img)
-        work = ocr._rotate(img, pd.rotation).copy()
-        pipeline._page_text(work, pd, set())
+        work = ocr.rotate(img, pd.rotation).copy()
+        pipeline.page_text(work, pd, set())
         t = build(pd, a.name)
         out = a.out or Path(settings.templates_dir) / f"{a.name}.json"
         out.parent.mkdir(parents=True, exist_ok=True)

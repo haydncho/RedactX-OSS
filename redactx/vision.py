@@ -280,18 +280,24 @@ def light_layer(img: np.ndarray) -> np.ndarray:
     return keep[lab]
 
 
-def _ocr_lines(img_rgb: np.ndarray):
+# 浅色层上的水印字大（常见 20–30 磅），缩小一半识别即可，整页 OCR 的耗时约降到三分之一；坐标再放大回原图
+WM_OCR_SCALE = 0.5
+
+
+def _ocr_lines(img_rgb: np.ndarray, scale: float = 1.0):
     from . import ocr
 
+    if scale != 1.0:
+        img_rgb = cv2.resize(img_rgb, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
     res = ocr.engine()(img_rgb, use_det=True, use_cls=True, use_rec=True)
     boxes = getattr(res, "boxes", None)
     if boxes is None:
         return []
     scores = getattr(res, "scores", None) or [1.0] * len(boxes)
-    return [((t or "").replace(" ", ""), np.asarray(q, dtype=np.float32), float(s)) for t, q, s in zip(res.txts or (), boxes, scores)]
+    return [((t or "").replace(" ", ""), np.asarray(q, dtype=np.float32) / scale, float(s)) for t, q, s in zip(res.txts or (), boxes, scores)]
 
 
-def _line_angle(q: np.ndarray) -> float:
+def line_angle(q: np.ndarray) -> float:
     """文字行方向（度，图像坐标 y 向下，顺时针为正）。"""
     return float(np.degrees(np.arctan2(q[1][1] - q[0][1], q[1][0] - q[0][0])))
 
@@ -325,7 +331,7 @@ def _extend_to(q: np.ndarray, part: str, full: str) -> np.ndarray:
     return np.array([start, end, end + v, start + v], dtype=np.float32)
 
 
-def _is_slanted(angle: float) -> bool:
+def is_slanted(angle: float) -> bool:
     a = abs(angle) % 180
     return SLANT_MIN <= a <= 90 - SLANT_MIN or 90 + SLANT_MIN <= a <= 180 - SLANT_MIN
 
@@ -352,7 +358,7 @@ def watermarks(img: np.ndarray, names: list[str], is_org, all_slanted: bool = Fa
         for t, q, s in lines:
             if s < 0.5 or len(t) < 2 or reddish(q):
                 continue
-            slanted = slanted_by_construction or _is_slanted(_line_angle(q))
+            slanted = slanted_by_construction or is_slanted(line_angle(q))
             if len(t) < 4:
                 # 压在正文上的水印常被切碎，只认出两三个字：斜向且是本文档已知院名中的一段，就按院名长度补全范围
                 full = next((n for n in names if len(n) >= 4 and t in n), None) if slanted else None
@@ -366,12 +372,12 @@ def watermarks(img: np.ndarray, names: list[str], is_org, all_slanted: bool = Fa
             out.append(Watermark(q, _qrect(q), t, org))
         return out
 
-    first = _ocr_lines(layer)
+    first = _ocr_lines(layer, WM_OCR_SCALE)
     found = accept(first)
     if found or light.mean() < 0.003:
         return found
     # 只在本页已有斜向碎片、或本文档前面已确认水印角度时才转正再识别（不盲试角度，避免拖慢普通页面）
-    frags = [_line_angle(q) for t, q, s in first if len(t) >= 2 and _is_slanted(_line_angle(q))]
+    frags = [line_angle(q) for t, q, s in first if len(t) >= 2 and is_slanted(line_angle(q))]
     tried: list[float] = []
     for ang in frags + list(angle_hints or []):
         if any(abs(ang - t) < 5 for t in tried):
@@ -386,8 +392,8 @@ def watermarks(img: np.ndarray, names: list[str], is_org, all_slanted: bool = Fa
         M[1, 2] += nh / 2 - h / 2
         rot = cv2.warpAffine(layer, M, (nw, nh), borderValue=(255, 255, 255))
         inv = cv2.invertAffineTransform(M)
-        back = [(t, cv2.transform(q.reshape(-1, 1, 2), inv).reshape(-1, 2), s) for t, q, s in _ocr_lines(rot)
-                if abs(_line_angle(q)) < SLANT_MIN]
+        back = [(t, cv2.transform(q.reshape(-1, 1, 2), inv).reshape(-1, 2), s) for t, q, s in _ocr_lines(rot, WM_OCR_SCALE)
+                if abs(line_angle(q)) < SLANT_MIN]
         found = accept(back, slanted_by_construction=True)
         if found:
             return found
@@ -523,7 +529,7 @@ def grow_strokes(img: np.ndarray, rect: Rect, avoid: list[Rect]) -> Rect:
         return (cx + wx0, cy + wy0, cx + cw + wx0, cy + chh + wy0)
 
     def is_text(b):  # 这一笔主要落在别的已识别文字的字框里，或盖住了某个字框的大部分（日期、标签）
-        return any(_inter(b, a) > 0.5 * max((b[2] - b[0]) * (b[3] - b[1]), 1) or _inter(b, a) > 0.3 * max((a[2] - a[0]) * (a[3] - a[1]), 1)
+        return any(inter(b, a) > 0.5 * max((b[2] - b[0]) * (b[3] - b[1]), 1) or inter(b, a) > 0.3 * max((a[2] - a[0]) * (a[3] - a[1]), 1)
                    for a in avoid)
 
     for i in inside:
@@ -545,7 +551,7 @@ def grow_strokes(img: np.ndarray, rect: Rect, avoid: list[Rect]) -> Rect:
     return tuple(float(v) for v in out)
 
 
-def _inter(a: Rect, b: Rect) -> float:
+def inter(a: Rect, b: Rect) -> float:
     w = min(a[2], b[2]) - max(a[0], b[0])
     h = min(a[3], b[3]) - max(a[1], b[1])
     return w * h if w > 0 and h > 0 else 0.0

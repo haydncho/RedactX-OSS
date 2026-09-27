@@ -47,6 +47,13 @@ STYLES = [
 ]
 STYLE_CODES = {s["code"] for s in STYLES}
 
+
+def resolve_style(code: str, styles: dict | None = None, default: str | None = None) -> str:
+    """某类实体实际使用的打码样式：单独指定的 → 调用方给的全局默认 → 该实体的推荐样式 → 标签。
+    自动打码与复核重打码共用；网页提交时为每类实体都给出了明确的样式。"""
+    s = (styles or {}).get(code) or default or ENTITY_BY_CODE.get(code, {}).get("default_style") or "label"
+    return s if s in STYLE_CODES else "label"
+
 PRESETS = [
     {"code": "audit", "name": "病案审核", "desc": "标签样式，看得出删了什么", "default_style": "label", "overrides": {}},
     {"code": "public", "name": "对外公开", "desc": "背景色擦除，不显示类型", "default_style": "background", "overrides": {"QRCODE": "background"}},

@@ -26,8 +26,9 @@ SIZE = 960
 
 
 def preprocess(img_rgb: np.ndarray, size: int = SIZE) -> np.ndarray:
-    x = cv2.resize(img_rgb, (size, size), interpolation=cv2.INTER_AREA).astype(np.float32) / 255.0
-    return x.transpose(2, 0, 1)
+    from redactx.detect.detector import preprocess as infer_preprocess  # 与推理共用同一份预处理
+
+    return infer_preprocess(img_rgb, size)
 
 
 def load_coco(dirs: list[Path]) -> list[tuple[Path, list[tuple[int, list[float]]]]]:
@@ -123,6 +124,9 @@ def export(run: Path, to: Path) -> None:
     (to / "config.json").write_text(json.dumps({"classes": meta["classes"], "size": meta["size"], "base": meta["base"], "revision": meta["revision"],
                                                 "trained_on": meta["sources"], "pages": meta["pages"]}, ensure_ascii=False, indent=1), encoding="utf-8")
     (to / "NOTICE").write_text(f"签名、印章检测模型：由 {meta['base']}（Apache-2.0，版本 {meta['revision']}）在本项目数据上微调后导出为 ONNX。\n", encoding="utf-8")
+    from redactx.integrity import write_sums
+
+    write_sums(to, ["model.onnx", "config.json"])  # 服务加载前核对
     print(f"已导出到 {to}")
 
 

@@ -17,7 +17,7 @@ import numpy as np
 from ..config import settings
 from ..schemas import Hit, PageData
 from .anchors import NOT_NAME
-from .lexicon import COMPOUND_SURNAMES, STOP_WORDS, SURNAMES
+from .lexicon import STOP_WORDS, surname_start
 
 log = logging.getLogger("redactx.ner")
 
@@ -54,6 +54,10 @@ def _load():
             else:
                 import onnxruntime as ort
                 from tokenizers import BertWordPieceTokenizer
+
+                from ..integrity import verify_dir
+
+                verify_dir(d)  # 模型文件被替换或损坏时报错，不悄悄少遮
 
                 opts = ort.SessionOptions()
                 opts.intra_op_num_threads = settings.ner_threads
@@ -105,15 +109,11 @@ def _page_text(page: PageData) -> tuple[str, list[tuple[int, int] | None]]:
     return text, where
 
 
-def _surname_start(v: str) -> bool:
-    return v[:2] in COMPOUND_SURNAMES or v[0] in SURNAMES
-
-
 def _is_name(v: str) -> bool:
     core = v.replace("·", "")
     if not 2 <= len(core) <= 4 or not all("一" <= ch <= "龥" or ch == "·" for ch in v):
         return False
-    if not _surname_start(v) or v in STOP_WORDS or any(v.startswith(w) for w in NOT_NAME if len(w) >= 2):
+    if not surname_start(v) or v in STOP_WORDS or any(v.startswith(w) for w in NOT_NAME if len(w) >= 2):
         return False
     return True
 

@@ -28,8 +28,8 @@ def _page(pdf: Path) -> PageData:
     for img, pd in iter_pages(pdf, "pdf", 200, None):
         if pd.text_source != "text":
             pd.rotation = ocr.detect_orientation(img)
-        work = ocr._rotate(img, pd.rotation).copy()
-        pipeline._page_text(work, pd, set())
+        work = ocr.rotate(img, pd.rotation).copy()
+        pipeline.page_text(work, pd, set())
         return pd
     raise SystemExit(f"{pdf} 没有页面")
 
@@ -38,7 +38,7 @@ def _covered(pd: PageData, hits, truth_box) -> bool:
     x0, y0, x1, y1 = truth_box[0] * pd.width, truth_box[1] * pd.height, truth_box[2] * pd.width, truth_box[3] * pd.height
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
     for h in hits:
-        r = pipeline._hits_to_rect(pd, h, True)
+        r = pipeline.hits_to_rect(pd, h, True)
         if r and r[0] <= cx <= r[2] and r[1] <= cy <= r[3]:
             return True
     return False

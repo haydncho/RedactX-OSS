@@ -81,3 +81,8 @@ SURNAMES = set("".join("""王李张刘陈杨黄赵吴周徐孙马朱胡郭何高
     狄平计索宣晋相初门云容敬来扈晁芮都普阙浦戈伏鹿薄邸雍辜羊阿乌母裘亓修邰赫杭况那宿鲜印逯隆茹诸战慕危玉银亢嵇公哈湛宾戎勾茅利於
     呼居揭干但尉冶斯元束檀衣信展阴昝智幸奉植衡富尧闭由""".split()))
 COMPOUND_SURNAMES = set("欧阳 司马 上官 诸葛 东方 皇甫 尉迟 公孙 慕容 长孙 宇文 司徒 夏侯 令狐 端木 独孤".split())
+
+
+def surname_start(value: str) -> bool:
+    """首字是常见姓氏（或前两字是复姓）。"""
+    return bool(value) and (value[0] in SURNAMES or value[:2] in COMPOUND_SURNAMES)

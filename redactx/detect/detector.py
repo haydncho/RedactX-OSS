@@ -35,6 +35,9 @@ def _load():
             else:
                 import onnxruntime as ort
 
+                from ..integrity import verify_dir
+
+                verify_dir(d)
                 cfg = json.loads((d / "config.json").read_text(encoding="utf-8"))
                 opts = ort.SessionOptions()
                 opts.intra_op_num_threads = settings.ner_threads
@@ -47,6 +50,12 @@ def available() -> bool:
     return _load() is not None
 
 
+def preprocess(img_rgb: np.ndarray, size: int) -> np.ndarray:
+    """缩放到 size×size、归一化到 0–1，转成 CHW。训练（train/detector.py）与推理共用，保证一致。"""
+    x = cv2.resize(img_rgb, (size, size), interpolation=cv2.INTER_AREA).astype(np.float32) / 255.0
+    return x.transpose(2, 0, 1)
+
+
 def detect(img_rgb: np.ndarray, min_score: float = MIN_SCORE) -> list[tuple[str, Rect, float]]:
     """返回 [(类型, 像素框, 分数)]。"""
     m = _load()
@@ -54,7 +63,7 @@ def detect(img_rgb: np.ndarray, min_score: float = MIN_SCORE) -> list[tuple[str,
         return []
     sess, classes, size = m
     h, w = img_rgb.shape[:2]
-    x = cv2.resize(img_rgb, (size, size), interpolation=cv2.INTER_AREA).astype(np.float32).transpose(2, 0, 1)[None] / 255.0
+    x = preprocess(img_rgb, size)[None]
     logits, boxes = sess.run(None, {"pixel_values": x})
     prob = 1 / (1 + np.exp(-logits[0]))
     out = []

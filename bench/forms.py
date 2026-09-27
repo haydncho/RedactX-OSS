@@ -17,7 +17,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from . import fonts
-from .fakes import LAB_ITEMS, Case, fmt_date
+from .fakes import LAB_ITEMS, Case, fake_name, fmt_date
 
 A4 = (595.3, 841.9)
 Truth = tuple[str, str]
@@ -409,8 +409,8 @@ def nursing_record(c: Case, logo_img) -> Page:
     手写护理记录里只出现一次的家属姓名、盖在护士长签名上的科室章。"""
     rng = random.Random("nurse:" + c.patient)  # 独立的随机源：不改变 c.rng，前 6 页的内容保持不变
     used = {c.patient, c.contact, c.relative_in_prose, *c.staff.values()}
-    nurses = [_fake_name(rng, used) for _ in range(4)]
-    family = _fake_name(rng, used)
+    nurses = [fake_name(rng, used) for _ in range(4)]
+    family = fake_name(rng, used)
     p = Page("护理记录单")
     _header(p, c, "一般护理记录单", logo_img)
     y = 112
@@ -451,7 +451,7 @@ def nursing_record(c: Case, logo_img) -> Page:
         p.hand(cols[3] + 4, y, "/".join(signers), size=9, truth=("SIGNATURE", "redact"), esign=True)
     y = top + (len(rows) + 1) * rh + 40
     # 护士长签名，上面压着科室护理单元的章
-    x = p.field(300, y, "护士长签名", _fake_name(rng, used), truth=("SIGNATURE", "redact"), hand=True, esign=True, sep="：", gap=4)
+    x = p.field(300, y, "护士长签名", fake_name(rng, used), truth=("SIGNATURE", "redact"), hand=True, esign=True, sep="：", gap=4)
     p.seal(x - 20, y + 4, 34, f"{c.dept}护理单元")
     _footer(p, c, 7)
     return p
@@ -515,15 +515,6 @@ def _luhn_digit(body: str) -> str:
         total += d - 9 if d > 9 else d
     return str((10 - total % 10) % 10)
 
-
-def _fake_name(rng, used: set[str]) -> str:
-    from .fakes import GIVEN, SURNAMES
-
-    while True:
-        n = rng.choice(SURNAMES) + "".join(rng.choice(GIVEN) for _ in range(rng.choice([1, 2, 2])))
-        if n not in used:
-            used.add(n)
-            return n
 
 
 def case_pages(c: Case) -> list[Page]:

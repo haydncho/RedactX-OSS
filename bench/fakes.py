@@ -60,7 +60,8 @@ class Case:
     fee_total: str = ""
 
 
-def _name(rng: random.Random, used: set[str]) -> str:
+def fake_name(rng: random.Random, used: set[str]) -> str:
+    """随机姓名，不与 used 里的重复（生成后加入 used）。"""
     while True:
         n = rng.choice(SURNAMES) + "".join(rng.choice(GIVEN) for _ in range(rng.choice([1, 2, 2])))
         if n not in used:
@@ -72,7 +73,7 @@ def make_case(seed: int) -> Case:
     rng = random.Random(seed)
     used: set[str] = set()
     c = Case(rng=rng)
-    c.patient, c.contact, c.relative_in_prose = _name(rng, used), _name(rng, used), _name(rng, used)
+    c.patient, c.contact, c.relative_in_prose = fake_name(rng, used), fake_name(rng, used), fake_name(rng, used)
     c.sex = rng.choice("男女")
     c.birth = date(rng.randint(1940, 2000), rng.randint(1, 12), rng.randint(1, 28))
     c.admit = date(2025, rng.randint(1, 10), rng.randint(1, 20))
@@ -95,7 +96,7 @@ def make_case(seed: int) -> Case:
     c.dept = rng.choice(DEPTS)
     c.diagnosis = rng.choice(DIAGNOSES)
     for role in ["科主任", "主任医师", "主治医师", "住院医师", "责任护士", "编码员", "检验者", "审核者"]:
-        c.staff[role] = _name(rng, used)
+        c.staff[role] = fake_name(rng, used)
     c.fee_total = f"{rng.randint(3000, 60000)}.{rng.randint(0, 99):02d}"
     return c
 

@@ -22,8 +22,9 @@ def engine():
         if _engine is None:
             from rapidocr import RapidOCR
 
-            logging.getLogger("RapidOCR").setLevel(logging.WARNING)
-            _engine = RapidOCR(params={"Global.log_level": "warning"}) if _accepts_params() else RapidOCR()
+            # 浅色层、自检条带里没有字是正常情况，RapidOCR 会为此打警告：只保留错误日志
+            logging.getLogger("RapidOCR").setLevel(logging.ERROR)
+            _engine = RapidOCR(params={"Global.log_level": "error"}) if _accepts_params() else RapidOCR()
         return _engine
 
 
@@ -37,7 +38,7 @@ def _accepts_params() -> bool:
         return False
 
 
-def _rotate(img: np.ndarray, k: int) -> np.ndarray:
+def rotate(img: np.ndarray, k: int) -> np.ndarray:
     """顺时针旋转 k*90 度。"""
     return {0: img, 90: cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE), 180: cv2.rotate(img, cv2.ROTATE_180), 270: cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)}[k]
 
@@ -61,7 +62,7 @@ def _quad_rect(quad, k: int, w: int, h: int) -> tuple[float, float, float, float
     return min(xs), min(ys), max(xs), max(ys)
 
 
-def _rect_unrotate(rect, k: int, w: int, h: int) -> tuple[float, float, float, float]:
+def rect_unrotate(rect, k: int, w: int, h: int) -> tuple[float, float, float, float]:
     """旋转画面上的矩形换算回原图坐标。w、h 为原图尺寸。"""
     x0, y0, x1, y1 = rect
     return _quad_rect([(x0, y0), (x1, y0), (x1, y1), (x0, y1)], k, w, h)
@@ -90,7 +91,7 @@ def detect_orientation(img: np.ndarray) -> int:
     best, best_score = 90, -1.0
     for k in (90, 270):
         # 不开方向分类：它会把倒置的文字行翻正，两个方向的置信度就拉不开差距，文字少的页会选反
-        r = eng(_rotate(small, k), use_det=True, use_cls=False, use_rec=True)
+        r = eng(rotate(small, k), use_det=True, use_cls=False, use_rec=True)
         scores = list(getattr(r, "scores", None) or [])
         s = float(np.mean(scores)) * len(scores) if scores else 0.0
         if s > best_score:
@@ -100,7 +101,7 @@ def detect_orientation(img: np.ndarray) -> int:
 
 def ocr_page(img: np.ndarray, rotation: int = 0, min_score: float = 0.3) -> list[Line]:
     h, w = img.shape[:2]
-    work = _rotate(img, rotation)
+    work = rotate(img, rotation)
     res = engine()(work, use_det=True, use_cls=True, use_rec=True, return_word_box=True)
     txts = getattr(res, "txts", None) or ()
     boxes = getattr(res, "boxes", None)

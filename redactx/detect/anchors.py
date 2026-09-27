@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass
 
 from ..schemas import Hit, Line, PageData, Rect
-from .lexicon import BELOW_TYPES, COMPOUND_SURNAMES, GENERIC, LABELS, MAX_LEN, SIGNATURE_LABELS, STOP_WORDS, SURNAMES, TEMPLATE_CHARS
+from .lexicon import BELOW_TYPES, COMPOUND_SURNAMES, GENERIC, LABELS, MAX_LEN, SIGNATURE_LABELS, STOP_WORDS, SURNAMES, TEMPLATE_CHARS, surname_start
 
 _LABEL_MAX = max(len(k) for k in LABELS)
 _STOP_MAX = max(len(k) for k in STOP_WORDS)
@@ -282,13 +282,9 @@ def _valid(kind: str, value: str) -> bool:
     return True
 
 
-def _surname_start(value: str) -> bool:
-    return bool(value) and (value[0] in SURNAMES or value[:2] in COMPOUND_SURNAMES)
-
-
 def _name_like(line: Line, k: int, e: int) -> bool:
     """离标签较远的取值像姓名：独立的一小段，或首字是常见姓氏。两者都不满足的（如“已阅读并理解……”）是正文。"""
-    return _standalone(line, k, e) or _surname_start(line.text[k:e])
+    return _standalone(line, k, e) or surname_start(line.text[k:e])
 
 
 def _standalone(line: Line, k: int, e: int) -> bool:
@@ -301,7 +297,7 @@ def _standalone(line: Line, k: int, e: int) -> bool:
     return e == len(text) or text[e] in PUNCT_PRE or _gap(line, e - 1, e) > 1.0 or bool(_match_at(text, e, STOP_WORDS, _STOP_MAX))
 
 
-def _looks_printed(text: str, chars) -> bool:
+def looks_printed(text: str, chars) -> bool:
     """成句的打印文字：至少 4 个字且识别置信度高（手写签名常被识别成一两个低置信度的字）。"""
     return len(text) >= 4 and sum(c.score for c in chars) / max(len(chars), 1) >= 0.9
 
@@ -345,7 +341,6 @@ def _right_neighbor(page: PageData, lab_line: Line, lab_end_x: float, skip: int)
     """标签所在行右侧紧挨着的另一行（OCR 常把标签和手写内容切成两行）。"""
     h = max(lab_line.height, 1)
     y0, y1 = lab_line.box[1], lab_line.box[3]
-    cy = (y0 + y1) / 2
     best = None
     for li, ln in enumerate(page.lines):
         if li == skip or not ln.chars:
@@ -375,7 +370,7 @@ def row_stops(page: PageData, cy: float, h: float) -> list[float]:
             if _match_at(t, i, STOP_WORDS, _STOP_MAX) or t[i] in TEMPLATE_CHARS - {" "}:
                 xs.append(ln.chars[i].box[0])
             # 成句的打印文字也是填写区的边界：单独成行的，或同一行里隔开一大段空白后出现的（可搜索 PDF 的文字层会把整行连成一行）
-            elif (i == 0 or _gap(ln, i - 1, i) > 1.5) and _looks_printed(t[i:], ln.chars[i:]):
+            elif (i == 0 or _gap(ln, i - 1, i) > 1.5) and looks_printed(t[i:], ln.chars[i:]):
                 xs.append(ln.chars[i].box[0])
     return sorted(xs)
 
@@ -401,7 +396,7 @@ def anchor(page: PageData, enabled: set[str]) -> tuple[list[Hit], list[tuple[str
         limit = None  # 填写区右边界：远处成句的打印文字
         dist = (line.chars[k].box[0] - lab_x1) / h if value else 0.0
         if value and kind in ("PERSON", "STAFF") and dist > FAR_VALUE and (dist > FAR_NAME_MAX or not _name_like(line, k, e)):
-            if _looks_printed(line.text[k:], line.chars[k:]):
+            if looks_printed(line.text[k:], line.chars[k:]):
                 limit = line.chars[k].box[0] - 0.3 * h
             value = ""
         # 标签后面紧跟“查房”“记录”等病历常用词：这是正文（如“上级医师查房，同意……”），不是表单字段
@@ -410,7 +405,7 @@ def anchor(page: PageData, enabled: set[str]) -> tuple[list[Hit], list[tuple[str
         if _valid(kind, value) and kind in enabled:
             # 通用词（医师、患者、签名……）后的取值证据弱：首字须是常见姓氏才作全文追踪的种子；
             # 明确标签（姓名、主治医师、科主任……）后的照常作种子（手写姓名首字常被 OCR 认错，不能要求姓氏）
-            seed = not lh.weak and (lh.label not in GENERIC or _surname_start(value))
+            seed = not lh.weak and (lh.label not in GENERIC or surname_start(value))
             hits.append(Hit(kind, "anchor", page.index, lh.line, k, e, value, seed=seed))
             if is_sig:  # 签名之后到本行下一个字段的笔迹全部遮盖（收笔拖尾、认不出的字）；不用标签下方的备选区
                 fields += [(f[0], f[1], f[2], None) for f in _field_rects(page, line, lh, kind, is_sig, h, limit) if f[2]]
@@ -423,12 +418,12 @@ def anchor(page: PageData, enabled: set[str]) -> tuple[list[Hit], list[tuple[str
             dist2 = (nl.box[0] - lab_x1) / h
             if dist2 > FAR_VALUE and kind in ("PERSON", "STAFF") and (dist2 > FAR_NAME_MAX or not _name_like(nl, k2, e2)):
                 # 远处的邻行不像姓名：若是成句的打印文字，它就是填写区的右边界
-                if _looks_printed(nl.text, nl.chars):
+                if looks_printed(nl.text, nl.chars):
                     limit = nl.box[0] - 0.3 * h
                 v2 = ""
             if _valid(kind, v2) and kind in enabled:
                 # 取自标签旁边另一行的取值证据弱：首字须是常见姓氏才作种子（B 样例第 50 页的表单用语曾被追踪 65 次）
-                hits.append(Hit(kind, "anchor", page.index, nb[0], k2, e2, v2, seed=not lh.weak and _surname_start(v2)))
+                hits.append(Hit(kind, "anchor", page.index, nb[0], k2, e2, v2, seed=not lh.weak and surname_start(v2)))
                 if is_sig:
                     fields += [(f[0], f[1], f[2], None) for f in _field_rects(page, line, lh, kind, is_sig, h, limit) if f[2]]
                 continue

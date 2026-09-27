@@ -16,7 +16,7 @@ from collections import Counter
 
 from redactx.schemas import Char, Line, PageData
 
-from .fakes import GIVEN, SURNAMES
+from .fakes import SURNAMES, fake_name
 
 REL = ["女儿", "儿子", "妻子", "丈夫", "母亲", "父亲", "女婿", "儿媳", "孙女", "外甥"]
 COMPLAINTS = ["反复胸闷气促2年，加重3天", "多饮、多尿伴体重下降3月", "右下腹痛12小时", "发热、咳嗽1周", "头晕伴视物模糊2天", "腰痛伴左下肢放射痛1月"]
@@ -80,19 +80,11 @@ PLAIN_SENTENCES = [
 ]
 
 
-def _name(rng: random.Random, used: set[str]) -> str:
-    while True:
-        n = rng.choice(SURNAMES) + "".join(rng.choice(GIVEN) for _ in range(rng.choice([1, 2, 2])))
-        if n not in used:
-            used.add(n)
-            return n
-
-
 def make_doc(rng: random.Random) -> tuple[str, list[tuple[int, int, str]]]:
     """一段叙述：约一半句子含人名。返回 (文本, [(起, 止, 类别)])，类别为 name / optional。"""
     used: set[str] = set()
-    ctx = {"P": _name(rng, used), "F": _name(rng, used), "F2": _name(rng, used), "D": _name(rng, used), "D2": _name(rng, used),
-           "D3": _name(rng, used), "N": _name(rng, used)}
+    ctx = {"P": fake_name(rng, used), "F": fake_name(rng, used), "F2": fake_name(rng, used), "D": fake_name(rng, used), "D2": fake_name(rng, used),
+           "D3": fake_name(rng, used), "N": fake_name(rng, used)}
     sents = rng.sample(NAME_SENTENCES, 5) + rng.sample(PLAIN_SENTENCES, 5)
     rng.shuffle(sents)
     text, spans = "", []

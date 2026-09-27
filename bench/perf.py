@@ -80,7 +80,7 @@ def main() -> None:
         res = json.loads(r.stdout.strip().splitlines()[-1])
         rows.append((label, res))
         print(f"{label}: {res}", flush=True)
-    lines = [f"| 文档 | 页数 | 总耗时 | 每页 | 首页（含模型加载） | 内存峰值 |", "|---|---|---|---|---|---|"]
+    lines = ["| 文档 | 页数 | 总耗时 | 每页 | 首页（含模型加载） | 内存峰值 |", "|---|---|---|---|---|---|"]
     for label, r in rows:
         lines.append(f"| {label} | {r['pages']} | {r['total_sec']} 秒 | {r['sec_per_page']} 秒 | {r['first_page_sec']} 秒 | {r['peak_mb']} MB |")
     note = f"测量时系统 1 分钟负载 {load:.1f}（{cpus} 核）" + ("；负载偏高，结果可能偏慢" if load > cpus * 0.5 else "")
