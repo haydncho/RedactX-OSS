@@ -163,12 +163,13 @@ figcaption { font-size: 12.5px; color: var(--mute); margin-top: 10px; }
 .stats, .perf { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .perf { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 28px; }
 .stat, .perf > div { position: relative; padding: 18px 20px; border-radius: 12px; box-shadow: var(--ring);
+  display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 12px; row-gap: 10px; align-content: start;
   background: linear-gradient(135deg, color-mix(in srgb, var(--link) 6%, var(--canvas)) 0%, var(--canvas) 55%, color-mix(in srgb, #8b5cf6 6%, var(--canvas)) 100%); }
-.stat-ic { display: inline-grid; place-items: center; width: 30px; height: 30px; margin-bottom: 12px; border-radius: 8px;
+.stat-ic { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px;
   background: color-mix(in srgb, var(--link) 12%, var(--canvas)); color: var(--link); }
 .stat-ic .ic { width: 17px; height: 17px; }
-.stat b, .perf b { display: block; font: 600 26px/1.2 var(--sans); letter-spacing: -.03em; margin-bottom: 4px; }
-.stat span, .perf span { color: var(--body); font-size: 13.5px; }
+.stat b, .perf b { display: block; font: 600 26px/1.2 var(--sans); letter-spacing: -.03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat > span:not(.stat-ic), .perf > div > span:not(.stat-ic) { grid-column: 1 / -1; color: var(--body); font-size: 13.5px; }
 .note { color: var(--mute); font-size: 13px; margin: 14px 0 0; max-width: 820px; }
 
 .deploy { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
