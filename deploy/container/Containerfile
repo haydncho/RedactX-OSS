@@ -18,14 +18,11 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY pyproject.toml ./
-RUN pip install \
-      "fastapi>=0.115" "uvicorn[standard]>=0.30" "python-multipart>=0.0.9" \
-      "pypdfium2>=4.30" "pikepdf>=9.0" "img2pdf>=0.5" "opencv-python-headless>=4.10" \
-      "numpy>=1.26" "pillow>=10.4" "rapidfuzz>=3.9" "rapidocr>=3.4" "onnxruntime>=1.19" "tokenizers>=0.19" "markdown>=3.6" \
- # rapidocr 会连带装上完整版 opencv-python（依赖 libGL），换成 headless 版
- && pip uninstall -y opencv-python \
- && pip install --force-reinstall --no-deps "opencv-python-headless>=4.10" \
+COPY pyproject.toml deploy/container/requirements.lock ./
+# 依赖按锁文件安装：版本固定，每个包核对 SHA-256，任何一个被替换都会构建失败。
+# 锁文件由 uv pip compile --generate-hashes 生成（Linux arm64、Python 3.12），不含完整版 opencv-python
+# （rapidocr 声明依赖它，但它要 libGL；cv2 由 opencv-python-headless 提供），所以用 --no-deps 安装
+RUN pip install --require-hashes --no-deps -r requirements.lock \
  && python -c "import cv2; print(cv2.__version__)" \
  # 构建时校验 OCR 模型已随包安装，运行时不再联网下载
  && python -c "import rapidocr, pathlib; m = pathlib.Path(rapidocr.__file__).parent / 'models'; fs = sorted(p.name for p in m.glob('*.onnx')); print(fs); assert fs"

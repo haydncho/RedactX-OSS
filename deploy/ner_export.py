@@ -47,6 +47,13 @@ def main() -> None:
         for f in ("config.json", "vocab.txt"):
             shutil.copy(src / f, a.out / f)
     (a.out / "NOTICE").write_text(NOTICE, encoding="utf-8")
+    # 模型文件的 SHA-256 清单：服务加载前核对，文件被替换或损坏时报错
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from redactx.integrity import write_sums
+
+    write_sums(a.out, ["model.onnx", "config.json", "vocab.txt"])
     print(f"已写入 {a.out}：" + "，".join(sorted(p.name for p in a.out.iterdir())))
 
 

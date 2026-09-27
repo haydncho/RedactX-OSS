@@ -43,7 +43,14 @@ uv pip install --python .venv/bin/python -e ".[ner-export]" && .venv/bin/python 
 deploy/container/run.sh          # 默认端口 8090、容器名 redactx-oss；也可 run.sh <端口>
 ```
 
-首次运行会构建镜像（需要下载 Python 基础镜像与依赖，一次性）。
+首次运行会构建镜像（需要下载 Python 基础镜像与依赖，一次性）。依赖按 `deploy/container/requirements.lock` 安装：版本固定、逐个核对 SHA-256，改了 `pyproject.toml` 的依赖后用下面的命令重新生成：
+
+```bash
+uv pip compile pyproject.toml --generate-hashes --python-version 3.12 --python-platform aarch64-unknown-linux-gnu \
+  --no-emit-package opencv-python --no-header -o deploy/container/requirements.lock
+```
+
+容器以非 root 用户运行，根文件系统只读（可写的只有数据卷与 `/tmp`），不带任何 Linux 能力；Word 等文档在无网络、看不到数据目录的沙箱里转换。人名识别、检测模型加载前按目录里的 `SHA256SUMS` 核对，文件被改动时报错而不是悄悄少遮（导出、训练脚本会写入这个清单）。
 
 开发时不必每次重建镜像：
 
@@ -112,6 +119,7 @@ deploy/keys.sh jobs clear --yes               # 清空全部任务
 | `REDACTX_DPI` | `200` | 默认渲染分辨率 |
 | `REDACTX_RETENTION_HOURS` | `24` | 结果默认保留时长 |
 | `REDACTX_WORKERS` | `1` | 并行任务数（16 GB 内存建议 1） |
+| `REDACTX_PAGE_WORKERS` | `2` | 单个任务内同时打码、自检的页数；每多一页内存峰值约多 0.5 GB，设为 1 时最省内存 |
 | `REDACTX_MAX_UPLOAD_MB` | `30` | 单个文件上传上限（MB） |
 | `REDACTX_API_KEY` | 无 | 管理员 Key，设置后启用 API Key 校验；用户 Key 用 `deploy/keys.sh` 生成 |
 
@@ -156,14 +164,14 @@ uv pip install --python .venv/bin/python -e ".[dev,bench]"
 .venv/bin/python -m bench.perf --out bench/perf --pages 100   # 结果写入 bench/perf/perf.md
 ```
 
-Apple M4、16 GB，本机直接运行（纯 CPU，默认选项：扫描页做出厂自检，文字层页不做）：
+Apple M4、16 GB，本机直接运行（纯 CPU，默认选项：扫描页做出厂自检，文字层页不做；第二遍同时处理 2 页）：
 
 | 文档 | 页数 | 总耗时 | 每页 | 首页 | 内存峰值 |
 |---|---|---|---|---|---|
-| 系统导出（文字层） | 100 | 18 秒 | 0.18 秒 | 0.6 秒 | 1.4 GB |
-| 白纸扫描 200 DPI（含手写页） | 102 | 261 秒 | 2.6 秒 | 1.6 秒 | 1.9 GB |
+| 系统导出（文字层） | 100 | 17 秒 | 0.17 秒 | 0.7 秒 | 1.0 GB |
+| 白纸扫描 200 DPI（含手写页） | 102 | 188 秒 | 1.84 秒 | 1.5 秒 | 3.1 GB |
 
-关闭自检时扫描件约 1.5 秒/页；文字层全部页自检约 1.2 秒/页。验收目标（容器内 6 核 6 GB 同样适用）：
+`REDACTX_PAGE_WORKERS=1`（不并行）时扫描件 2.07 秒/页、内存峰值 2.7 GB，文字层 0.19 秒/页。验收目标（容器内 6 核 6 GB 同样适用）：
 
 | 指标 | 文字层 | 扫描件 |
 |---|---|---|

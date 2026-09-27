@@ -25,11 +25,20 @@ if ! container image inspect "$IMAGE" >/dev/null 2>&1; then
   container build -t "$IMAGE" -f "$ROOT/deploy/container/Containerfile" "$ROOT"
 fi
 
+# API Key、导出开关传进容器。通过隧道等方式对外提供服务时必须设置 REDACTX_API_KEY（管理员 Key），
+# 再用 deploy/keys.sh 给每位使用者生成用户 Key
+EXTRA=()
+[ -n "${REDACTX_API_KEY:-}" ] && EXTRA+=(-e "REDACTX_API_KEY=$REDACTX_API_KEY")
+[ -n "${REDACTX_ALLOW_EXPORT:-}" ] && EXTRA+=(-e "REDACTX_ALLOW_EXPORT=$REDACTX_ALLOW_EXPORT")
+[ -z "${REDACTX_API_KEY:-}" ] && echo "提示：未设置 REDACTX_API_KEY，服务不校验 Key。只在本机使用时可以；对外提供前务必设置" >&2
+
 container rm -f "$NAME" >/dev/null 2>&1 || true
-# 只绑定到本机回环地址，其他机器访问不到
+# 只绑定到本机回环地址，其他机器访问不到。根文件系统只读（可写的只有数据卷与 /tmp），去掉全部 Linux 能力
 container run -d --name "$NAME" \
   -p "127.0.0.1:${PORT}:8000" \
   -v "$DATA:/data" \
+  --read-only --tmpfs /tmp --cap-drop ALL \
+  ${EXTRA[@]+"${EXTRA[@]}"} \
   -m 6G -c 6 \
   "$IMAGE"
 
