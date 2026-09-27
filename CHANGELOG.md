@@ -1,6 +1,8 @@
 # 更新日志
 
-## 未发布
+## 0.2.1 — 2026-09-27
+
+新增 Docker 部署方式与示例数据脚本；构建上下文排除病案样本；可要求文档转换必须有沙箱。
 
 - 部署：新增 Docker 方式（`deploy/docker/compose.yaml`）。与 Apple container 共用镜像；只绑定 127.0.0.1、非 root、根文件系统只读、去掉全部能力、`no-new-privileges`，数据放命名卷；`.env` 配置管理员 Key 等（模板 `.env.example`）。依赖锁文件经核对同时适用于 x86_64 与 arm64。`deploy/keys.sh` 自动识别 Apple container 与 Docker。
 - 部署：新增 `.dockerignore`，病案样本、本地材料、数据目录、`.env` 与所有 PDF、扫描件、Office 文档不进入构建上下文（已实测构建上下文只含所需的 63 个文件）。
