@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>锐消 RedactX</title>
+<meta name="description" content="病案等文档的本地脱敏服务：全部在本机处理、不联网，自动识别姓名、证件号、电话、手写签名、印章等并打码。Apache-2.0 开源。">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a0a0b" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='2' width='20' height='20' rx='5' fill='%23171717'/%3E%3Crect x='6' y='7' width='12' height='2.2' rx='1.1' fill='%23fff'/%3E%3Crect x='6' y='11' width='8' height='2.2' rx='1.1' fill='%23fff' opacity='.55'/%3E%3Crect x='6' y='15' width='12' height='2.2' rx='1.1' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="site.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<svg class="sprite" aria-hidden="true"><defs>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.6-3 8.3-7 10-4-1.7-7-5.4-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3zM13.5 8.5l3 3"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M10 4v16"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="M9 7l-5 5 5 5M15 7l5 5-5 5"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-github" viewBox="0 0 24 24"><path d="M9 19c-4 1.3-4-2-6-2.5M15 21v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12 12 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+</defs></svg>
+
+<header class="topbar">
+  <a class="brand" href="#top" aria-label="锐消 RedactX 首页">
+    <svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5" class="mark-bg"/><rect x="6" y="7" width="12" height="2.2" rx="1.1" class="mark-fg"/><rect x="6" y="11" width="8" height="2.2" rx="1.1" class="mark-fg dim"/><rect x="6" y="15" width="12" height="2.2" rx="1.1" class="mark-fg"/></svg>
+    <span>RedactX</span><span class="dot">·</span><span>锐消</span><span class="ver">v0.1.10</span>
+  </a>
+  <nav class="nav" aria-label="页面导航">
+    <a href="#features">功能</a>
+    <a href="#how">原理</a>
+    <a href="#eval">评估</a>
+    <a href="#deploy">部署</a>
+    <a class="gh" href="https://github.com/haydncho/RedactX-OSS" rel="noopener"><svg class="ic" aria-hidden="true"><use href="#i-github"/></svg><span>GitHub</span></a>
+    <button type="button" class="theme" id="theme" aria-label="切换主题"><svg class="ic sun" aria-hidden="true"><use href="#i-sun"/></svg><svg class="ic moon" aria-hidden="true"><use href="#i-moon"/></svg></button>
+  </nav>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="mesh" aria-hidden="true"></div>
+    <div class="wrap hero-grid">
+      <div class="hero-text">
+        <span class="eyebrow">LOCAL · OFFLINE · OPEN SOURCE</span>
+        <h1>病案脱敏，<br>只在本机完成。</h1>
+        <p class="lead">上传 PDF、图片或 Word 文档，自动识别患者与医护人员姓名、医院名称、证件号、电话、病案号、手写填写区、签名、印章等内容，按指定样式打码，输出栅格化重建的 PDF。</p>
+        <ul class="pills" aria-label="要点">
+          <li><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg>全部在本机处理，不调用任何云端接口</li>
+          <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>日期一律保留</li>
+          <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Apache-2.0 开源</li>
+        </ul>
+        <div class="cta">
+          <a class="btn primary" href="#deploy">部署到本机<svg class="ic" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+          <a class="btn" href="https://github.com/haydncho/RedactX-OSS/releases/latest" rel="noopener"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>下载最新版本</a>
+        </div>
+      </div>
+      <figure class="hero-shot">
+        <img class="shot light" src="images/result-light.webp" width="1440" height="860" alt="锐消 Web 页：脱敏后的病案首页，姓名、证件号、电话等处换成了浅色标签，右侧为遮盖统计" fetchpriority="high">
+        <img class="shot dark" src="images/result-dark.webp" width="1440" height="860" alt="锐消 Web 页的深色主题" loading="lazy">
+        <figcaption>截图中的病案为合成数据，姓名、机构、号码均为虚构。</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="features" class="section">
+    <div class="wrap">
+      <div class="head"><span class="eyebrow">WHAT IT REDACTS</span><h2>能遮什么</h2><p>勾选要遮盖的类型、为每类单独选样式；场景预设一键切换。</p></div>
+      <div class="groups">
+        <div class="group"><h3><i class="g-people"></i>人员</h3><p>患者与联系人姓名（含少数民族、英文姓名）、医护人员姓名、正文叙述里的人名</p></div>
+        <div class="group"><h3><i class="g-org"></i>机构与地址</h3><p>医院及机构名称、单位名称、地址</p></div>
+        <div class="group"><h3><i class="g-numbers"></i>证件与号码</h3><p>身份证、护照、港澳台通行证、军官证、手机与座机、银行卡、统一社会信用代码、邮箱、车牌、微信号</p></div>
+        <div class="group"><h3><i class="g-medical"></i>医疗标识</h3><p>病案号、住院号、门诊号、医保卡号、床号、检验与影像编号</p></div>
+        <div class="group"><h3><i class="g-handwriting"></i>手写与印章</h3><p>手写填写区、手写与电子签名、红章与淡色章</p></div>
+        <div class="group"><h3><i class="g-images"></i>图片与水印</h3><p>医院 Logo、二维码与条码；院名水印在识别前整页去除</p></div>
+      </div>
+
+      <div class="cards">
+        <article class="card"><svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg><h3>七种打码样式</h3><p>浅色标签、背景色擦除、代号替换、安全马赛克、斜线花纹、图像修复、黑色块。所有样式都先擦除原像素，再绘制外观，输出栅格化重建，文字层与元数据一并清除。</p></article>
+        <article class="card"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg><h3>复核台</h3><p>在页面上拖出新框补遮；保留原件的任务还能删框、改框、改类型，保存后只重新打码改动的页。快捷键与修改标记便于大批量标注。</p></article>
+        <article class="card"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg><h3>出厂自检</h3><p>扫描页打码后再识别一遍，补打遗漏的号码与姓名；文字层页默认不做，省下数倍时间。</p></article>
+        <article class="card"><svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg><h3>表单模板</h3><p>污渍、印章压住字段名时，按本单位表单的模板推算字段位置，照常遮盖内容。模板用空白表单一条命令生成。</p></article>
+        <article class="card"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg><h3>隐私设计</h3><p>上传的原文件处理完立即删除，服务端不保存原文件名；结果按保留时长自动清除，也可随时删除。标注导出默认关闭，开启须设置 API Key 并记审计日志。</p></article>
+        <article class="card"><svg class="ic" aria-hidden="true"><use href="#i-code"/></svg><h3>接口与批量</h3><p>异步任务、同步小文件、打码报告（每处遮盖的类型、来源与坐标，不含原文）与预览图接口，便于接入病案系统批量处理。</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section id="how" class="section alt">
+    <div class="wrap">
+      <div class="head"><span class="eyebrow">HOW IT WORKS</span><h2>工作原理</h2><p>两遍处理：第一遍逐页识别并收集可靠的姓名、号码，第二遍在全文追踪它们、打码并自检。</p></div>
+      <ol class="steps">
+        <li><b>渲染与去水印</b><span>PDF 结构里的水印对象直接删除；页面上的院名水印按颜色与角度整页擦除，只擦水印像素。</span></li>
+        <li><b>文字识别</b><span>文字层直接读取；扫描件用本地 OCR（RapidOCR，PP-OCR 模型），横放页自动转正。</span></li>
+        <li><b>多路识别</b><span>号码规则与校验位；字段锚定（“姓名：”后的内容、表格里的签名列）；正文人名识别（本地 NER 模型）；表单模板兜底。</span></li>
+        <li><b>全文追踪</b><span>在字段里认出的姓名、号码作为种子，在全文其他位置一并遮盖，允许一个错字。</span></li>
+        <li><b>打码与自检</b><span>手写签名沿笔画整体纳入；按样式擦除重绘；扫描页再识别一遍补打遗漏。</span></li>
+        <li><b>重建输出</b><span>每页栅格化后重建 PDF，不留文字层与元数据；报告只记类型与坐标，不含原文。</span></li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="eval" class="section">
+    <div class="wrap">
+      <div class="head"><span class="eyebrow">EVALUATION</span><h2>评估</h2><p>合成评估集：虚构病案按 13 种形态生成，覆盖系统导出、白纸与牛皮纸扫描、横放、复印机分层压缩、低质量扫描、手机拍照与各类证件号写法。</p></div>
+      <div class="stats">
+        <div class="stat"><b>98.6–100%</b><span>各形态遮全率</span></div>
+        <div class="stat"><b>0</b><span>误遮（应保留的日期、诊断、检验结果等）</span></div>
+        <div class="stat"><b>0</b><span>多遮（与任何应遮项都不重叠的遮盖）</span></div>
+        <div class="stat"><b>39 份 · 192 页</b><span>评估文档</span></div>
+      </div>
+      <p class="note">剩余漏遮主要是压在临床照片上的院名水印（照片须保留，暂不处理）。合成数据与真实病案有差距，真实文档上的表现以本单位抽检为准；复核台可在交付前人工补遮。</p>
+      <div class="perf">
+        <div><b>约 0.2 秒/页</b><span>系统导出（文字层）</span></div>
+        <div><b>约 2–3 秒/页</b><span>200 DPI 扫描件（含扫描页自检）</span></div>
+        <div><b>约 2 GB</b><span>内存峰值</span></div>
+      </div>
+      <p class="note">Apple M4、16 GB，纯 CPU。</p>
+    </div>
+  </section>
+
+  <section id="deploy" class="section alt">
+    <div class="wrap">
+      <div class="head"><span class="eyebrow">DEPLOY</span><h2>部署到本机</h2><p>服务只绑定 127.0.0.1；处理过程不联网。模型文件在准备阶段下载一次。</p></div>
+      <div class="deploy">
+        <div class="step">
+          <h3><span class="n">1</span>取得代码并导出正文人名模型</h3>
+<pre><code>git clone https://github.com/haydncho/RedactX-OSS.git
+cd RedactX-OSS
+uv venv .venv --python 3.12
+uv pip install --python .venv/bin/python -e ".[dev,ner-export]"
+.venv/bin/python deploy/ner_export.py   # 约 100 MB，写入 models/ner/</code></pre>
+        </div>
+        <div class="step">
+          <h3><span class="n">2</span>用容器运行（macOS Apple container）</h3>
+<pre><code>deploy/container/run.sh     # 首次运行构建镜像，端口 8090</code></pre>
+          <p>也可以直接本机运行：<code>.venv/bin/uvicorn service.app:app --host 127.0.0.1 --port 8000</code>。镜像为标准 OCI 格式，也可用 Docker 构建（<code>deploy/container/Containerfile</code>）。</p>
+        </div>
+        <div class="step">
+          <h3><span class="n">3</span>打开浏览器</h3>
+          <p>访问 <code>http://127.0.0.1:8090</code> 上传文件；接口文档在 <code>/docs</code>。建议 16 GB 内存（容器限制 6 GB、6 核）。</p>
+        </div>
+      </div>
+      <div class="api">
+        <h3>接口示例</h3>
+<pre><code>curl -F file=@病案.pdf -F 'options={"verify":"auto"}' http://127.0.0.1:8090/v1/jobs
+# → {"job_id": "job_…", "status": "queued"}
+curl http://127.0.0.1:8090/v1/jobs/job_…            # 轮询状态
+curl -o 脱敏.pdf http://127.0.0.1:8090/v1/jobs/job_…/result</code></pre>
+      </div>
+      <figure class="shot-wide">
+        <img src="images/upload.webp" width="1440" height="860" alt="上传页：左侧选择场景预设与脱敏字段，右侧拖入文档" loading="lazy">
+        <figcaption>上传页：左侧选择场景预设、要遮盖的字段与样式，右侧拖入文档。</figcaption>
+      </figure>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap foot-grid">
+    <div>
+      <p><b>锐消 RedactX</b> · Apache-2.0 开源 · <a href="https://github.com/haydncho/RedactX-OSS" rel="noopener">GitHub</a> · <a href="https://github.com/haydncho/RedactX-OSS/blob/main/CHANGELOG.md" rel="noopener">更新日志</a></p>
+      <p class="muted">第三方模型：RapidOCR 附带的 PP-OCR 模型（Apache-2.0）；正文人名识别 shibing624/bert4ner-base-chinese（Apache-2.0）。</p>
+    </div>
+    <p class="muted">本站只是项目介绍，不提供在线处理，不收集任何文件。页面上的截图均为合成数据。</p>
+  </div>
+</footer>
+
+</body>
+</html>
