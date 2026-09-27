@@ -43,6 +43,8 @@ class Settings:
     ner_dir: Path = field(default_factory=lambda: Path(os.environ.get("REDACTX_NER_DIR", Path(__file__).resolve().parent.parent / "models" / "ner")))
     ner_threads: int = int(os.environ.get("REDACTX_NER_THREADS", "4"))
     # 常用表单模板目录（字段锚定的降级方案）；没有模板时不起作用
+    # 签名、印章检测模型目录（可选）；不存在时不启用
+    detector_dir: Path = field(default_factory=lambda: Path(os.environ.get("REDACTX_DETECTOR_DIR", Path(__file__).resolve().parent.parent / "models" / "detector")))
     # 导出标注（打码前的原始页面 + 复核后的框）：含真实病案内容，默认关闭，只在标注环境里打开
     allow_export: bool = os.environ.get("REDACTX_ALLOW_EXPORT", "") == "1"
     templates_dir: Path = field(default_factory=lambda: Path(os.environ.get("REDACTX_TEMPLATES", Path(__file__).resolve().parent.parent / "templates")))

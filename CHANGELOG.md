@@ -1,5 +1,11 @@
 # 更新日志
 
+## 未发布
+
+- 新增：签名检测模型（可选，默认不启用）。`train/detector.py` 在 RT-DETR（PekingU/rtdetr_r18vd，Apache-2.0）上微调，训练数据为 COCO（合成数据用 `bench.to_coco` 生成，真实标注用复核台导出），导出 ONNX；`redactx/detect/detector.py` 推理，`models/detector/`（或 `REDACTX_DETECTOR_DIR`）有模型时接入：签名框大半落在成句印刷文字上的不采用。第一版只用合成数据训练：留出集签名 276/276 找到、无多余框；接入后 harsh 99.0% → 100%、kraft 99.6% → 100%，误遮、多遮 0。印章没学会，仍按颜色规则找。真实签名须用真实标注重训后再启用。
+- 新增：正文人名模型的训练流程 `train/ner.py`（合成语料生成、继续训练、导出 ONNX）。只用合成语料微调时 bench.prose 遮全率 99.2% → 99.7% 但多 2 处误遮，不替换现有模型，等真实标注语料。
+- 新增：`pyproject.toml` 可选依赖组 `train`（torch、transformers、scipy 等，只在训练时用）。
+
 ## 0.1.9 — 2026-09-26
 
 覆盖面（各类证件号、联系方式、特殊写法姓名、单页 Logo）；正文人名身份判断；常用表单模板；标注导出与标注规范。

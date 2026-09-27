@@ -25,7 +25,8 @@ from PIL import Image
 from . import ocr, pdfwm, redact, vision
 from .catalog import ENTITY_BY_CODE, STYLE_CODES
 from .detect import engine, rules
-from .detect.anchors import DATE_SIGN_CUT
+from .detect import detector
+from .detect.anchors import DATE_SIGN_CUT, _looks_printed
 from .ingest import iter_pages, open_doc
 from .schemas import Hit, PageData, Region
 
@@ -189,6 +190,22 @@ def _printed_boxes(pd: PageData, rect) -> list:
     return out
 
 
+def _detected(work: np.ndarray, pd: PageData, enabled: set[str]) -> list[Region]:
+    """检测模型认出的签名、印章。签名框大半落在已识别的成句印刷文字上时不采用（免得把印刷内容当成签名遮掉）。"""
+    out = []
+    printed = [c.box for ln in pd.lines if _looks_printed(ln.text, ln.chars) for c in ln.chars]
+    for kind, r, _score in detector.detect(work):
+        # 印章仍按颜色规则找：第一版模型没学会印章（合成数据上颜色规则已找全）
+        if kind not in enabled or kind != "SIGNATURE":
+            continue
+        if kind == "SIGNATURE":
+            area = max((r[2] - r[0]) * (r[3] - r[1]), 1)
+            if sum(vision._inter(r, b) for b in printed) > 0.4 * area:
+                continue
+        out.append(Region(kind, "model", pd.index, r))
+    return out
+
+
 def _field_ok(work: np.ndarray, pd: PageData, rect) -> bool:
     return (vision.has_ink(work, rect, exclude=_printed_boxes(pd, rect)) and not _has_printed_digits(pd, rect)
             and not _has_printed_labels(pd, rect))
@@ -344,6 +361,8 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
             regions += [Region("SEAL", "color", pd.index, r) for r in vision.red_seals(work, opts.dpi)]
         if "QRCODE" in enabled:
             regions += [Region("QRCODE", "detector", pd.index, r) for r in vision.codes(work, opts.dpi)]
+        if ({"SIGNATURE", "SEAL"} & enabled) and pd.text_source != "text" and detector.available():
+            regions += _detected(work, pd, enabled)
         if "LOGO" in enabled:
             graphics += vision.graphic_candidates(work, pd.lines, pd.index, opts.dpi)
             org_rects.append([r for r in (_hits_to_rect(pd, h, strict) for h in hits if h.type == "ORG") if r])

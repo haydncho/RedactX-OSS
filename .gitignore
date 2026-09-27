@@ -34,3 +34,6 @@ templates/*.json
 
 # 本地文档（协议模板等内部材料），不公开
 local/
+bench/train/
+train/runs/
+train/data/

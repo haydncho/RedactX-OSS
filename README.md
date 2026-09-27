@@ -169,6 +169,15 @@ OCR 没认出某个字段名时，可按本单位表单的模板推算它的位�
 - 文字识别：RapidOCR 随包附带的 PP-OCR 模型（Apache-2.0）。
 - 正文人名识别：[shibing624/bert4ner-base-chinese](https://huggingface.co/shibing624/bert4ner-base-chinese)（Apache-2.0），由 `deploy/ner_export.py` 固定版本下载、导出为 ONNX 并做 int8 量化，运行时只用 onnxruntime 与 tokenizers，不联网。未导出模型时该功能自动关闭，其余功能不受影响。
 
+## 训练模型
+
+`train/` 下是两套训练流程，训练依赖用 `uv pip install --python .venv/bin/python -e ".[train]"` 安装，运行时不需要：
+
+- 签名检测（`train/detector.py`）：在 RT-DETR（PekingU/rtdetr_r18vd，Apache-2.0）上微调。训练数据为 COCO 格式，可以是合成数据（`python -m bench.to_coco`），也可以是复核台导出的真实标注。导出的 ONNX 放到 `models/detector/`（或 `REDACTX_DETECTOR_DIR`）后启用；默认没有模型，不启用。
+- 正文人名（`train/ner.py`）：在现有 NER 模型上继续训练，语料为 JSONL。导出后用 `REDACTX_NER_DIR` 指向新模型，跑 `bench.prose` 与 `bench.evaluate` 比较，确认更好再替换。
+
+第一版签名检测模型只用合成数据训练（1283 页，7 轮）。在留出的合成评估集上，签名 276/276 全部找到，没有多余的框；接入后低质量扫描、牛皮纸形态的遮全率升到 100%，误遮、多遮仍为 0。评估集与训练集出自同一个生成器，真实签名上不会这么理想，须用真实标注重训、确认不增加误遮后再启用。
+
 ## 已知限制
 
 - 正文人名识别（NER）用通用语料（人民日报等）训练的模型，未在病历语料上微调；少见姓氏（如“向”“万”“付”）的人名偶有漏识别。只有姓氏的称呼（“李主任”）不遮。
