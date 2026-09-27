@@ -26,6 +26,11 @@
   <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
   <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></symbol>
   <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></symbol>
+  <symbol id="i-frame" viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M9 12h6"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3L5 13h6l-1 8 8-10h-6z"/></symbol>
+  <symbol id="i-scan" viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M4 12h16"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4"/></symbol>
   <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
 </defs></svg>
 
@@ -39,7 +44,7 @@
     <a href="#how">原理</a>
     <a href="#eval">评估</a>
     <a href="#deploy">部署</a>
-    <a class="demo-link" href="https://redactx-oss.pages.dev/app" rel="noopener">在线演示</a>
+    <a class="demo-link btn-demo" href="https://redactx-oss.pages.dev/app" rel="noopener">在线演示</a>
     <a class="gh" href="https://github.com/haydncho/RedactX-OSS" rel="noopener"><svg class="ic" aria-hidden="true"><use href="#i-github"/></svg><span>GitHub</span></a>
     <button type="button" class="theme" id="theme" aria-label="切换主题"><svg class="ic sun" aria-hidden="true"><use href="#i-sun"/></svg><svg class="ic moon" aria-hidden="true"><use href="#i-moon"/></svg></button>
   </nav>
@@ -59,7 +64,7 @@
           <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Apache-2.0 开源</li>
         </ul>
         <div class="cta">
-          <a class="btn primary" href="https://redactx-oss.pages.dev/app" rel="noopener">打开在线演示<svg class="ic" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+          <a class="btn primary btn-demo" href="https://redactx-oss.pages.dev/app" rel="noopener">打开在线演示<svg class="ic" aria-hidden="true"><use href="#i-arrow"/></svg></a>
           <a class="btn" href="https://github.com/haydncho/RedactX-OSS/releases/latest" rel="noopener"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>下载最新版本</a>
         </div>
         <p class="demo-note">在线演示是临时开放的演示环境：需要向项目负责人索取 API Key（打开后点右上角“API Key”填入）；请只上传合成或测试文件，不要上传真实病案。</p>
@@ -85,12 +90,12 @@
       </div>
 
       <div class="cards">
-        <article class="card"><svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg><h3>七种打码样式</h3><p>浅色标签、背景色擦除、代号替换、安全马赛克、斜线花纹、图像修复、黑色块。所有样式都先擦除原像素，再绘制外观，输出栅格化重建，文字层与元数据一并清除。</p></article>
-        <article class="card"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg><h3>复核台</h3><p>在页面上拖出新框补遮；保留原件的任务还能删框、改框、改类型，保存后只重新打码改动的页。快捷键与修改标记便于大批量标注。</p></article>
-        <article class="card"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg><h3>出厂自检</h3><p>扫描页打码后再识别一遍，补打遗漏的号码与姓名；文字层页默认不做，省下数倍时间。</p></article>
-        <article class="card"><svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg><h3>表单模板</h3><p>污渍、印章压住字段名时，按本单位表单的模板推算字段位置，照常遮盖内容。模板用空白表单一条命令生成。</p></article>
-        <article class="card"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg><h3>隐私设计</h3><p>上传的原文件处理完立即删除，服务端不保存原文件名；结果按保留时长自动清除，也可随时删除。标注导出默认关闭，开启须设置 API Key 并记审计日志。</p></article>
-        <article class="card"><svg class="ic" aria-hidden="true"><use href="#i-code"/></svg><h3>接口与批量</h3><p>异步任务、同步小文件、打码报告（每处遮盖的类型、来源与坐标，不含原文）与预览图接口，便于接入病案系统批量处理。</p></article>
+        <article class="card"><div class="card-head"><svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg><h3>七种打码样式</h3></div><p>浅色标签、背景色擦除、代号替换、安全马赛克、斜线花纹、图像修复、黑色块。所有样式都先擦除原像素，再绘制外观，输出栅格化重建，文字层与元数据一并清除。</p></article>
+        <article class="card"><div class="card-head"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg><h3>复核台</h3></div><p>在页面上拖出新框补遮；保留原件的任务还能删框、改框、改类型，保存后只重新打码改动的页。快捷键与修改标记便于大批量标注。</p></article>
+        <article class="card"><div class="card-head"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg><h3>出厂自检</h3></div><p>扫描页打码后再识别一遍，补打遗漏的号码与姓名；文字层页默认不做，省下数倍时间。</p></article>
+        <article class="card"><div class="card-head"><svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg><h3>表单模板</h3></div><p>污渍、印章压住字段名时，按本单位表单的模板推算字段位置，照常遮盖内容。模板用空白表单一条命令生成。</p></article>
+        <article class="card"><div class="card-head"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg><h3>隐私设计</h3></div><p>上传的原文件处理完立即删除，服务端不保存原文件名；结果按保留时长自动清除，也可随时删除。标注导出默认关闭，开启须设置 API Key 并记审计日志。</p></article>
+        <article class="card"><div class="card-head"><svg class="ic" aria-hidden="true"><use href="#i-code"/></svg><h3>接口与批量</h3></div><p>异步任务、同步小文件、打码报告（每处遮盖的类型、来源与坐标，不含原文）与预览图接口，便于接入病案系统批量处理。</p></article>
       </div>
     </div>
   </section>
@@ -113,16 +118,16 @@
     <div class="wrap">
       <div class="head"><span class="eyebrow">EVALUATION</span><h2>评估</h2><p>合成评估集：虚构病案按 13 种形态生成，覆盖系统导出、白纸与牛皮纸扫描、横放、复印机分层压缩、低质量扫描、手机拍照与各类证件号写法。</p></div>
       <div class="stats">
-        <div class="stat"><b>98.6–100%</b><span>各形态遮全率</span></div>
-        <div class="stat"><b>0</b><span>误遮（应保留的日期、诊断、检验结果等）</span></div>
-        <div class="stat"><b>0</b><span>多遮（与任何应遮项都不重叠的遮盖）</span></div>
-        <div class="stat"><b>39 份 · 192 页</b><span>评估文档</span></div>
+        <div class="stat"><span class="stat-ic"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg></span><b>98.6–100%</b><span>各形态遮全率</span></div>
+        <div class="stat"><span class="stat-ic"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg></span><b>0</b><span>误遮（应保留的日期、诊断、检验结果等）</span></div>
+        <div class="stat"><span class="stat-ic"><svg class="ic" aria-hidden="true"><use href="#i-frame"/></svg></span><b>0</b><span>多遮（与任何应遮项都不重叠的遮盖）</span></div>
+        <div class="stat"><span class="stat-ic"><svg class="ic" aria-hidden="true"><use href="#i-file"/></svg></span><b>39 份 · 192 页</b><span>评估文档</span></div>
       </div>
       <p class="note">剩余漏遮主要是压在临床照片上的院名水印（照片须保留，暂不处理）。合成数据与真实病案有差距，真实文档上的表现以本单位抽检为准；复核台可在交付前人工补遮。</p>
       <div class="perf">
-        <div><b>约 0.2 秒/页</b><span>系统导出（文字层）</span></div>
-        <div><b>约 2–3 秒/页</b><span>200 DPI 扫描件（含扫描页自检）</span></div>
-        <div><b>约 2 GB</b><span>内存峰值</span></div>
+        <div class="stat"><span class="stat-ic"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg></span><b>约 0.2 秒/页</b><span>系统导出（文字层）</span></div>
+        <div class="stat"><span class="stat-ic"><svg class="ic" aria-hidden="true"><use href="#i-scan"/></svg></span><b>约 2–3 秒/页</b><span>200 DPI 扫描件（含扫描页自检）</span></div>
+        <div class="stat"><span class="stat-ic"><svg class="ic" aria-hidden="true"><use href="#i-cpu"/></svg></span><b>约 2 GB</b><span>内存峰值</span></div>
       </div>
       <p class="note">Apple M4、16 GB，纯 CPU。</p>
     </div>
