@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import time
@@ -54,7 +55,7 @@ def error(status: int, code: str, message: str):
 
 
 def auth(x_api_key: str | None = Header(default=None, description="服务端设置了 REDACTX_API_KEY 时必填")):
-    if settings.api_key and x_api_key != settings.api_key:
+    if settings.api_key and not hmac.compare_digest((x_api_key or "").encode(), settings.api_key.encode()):
         error(401, "BAD_API_KEY", "API Key 无效")
 
 
@@ -96,25 +97,62 @@ def parse_options(raw: str | None, password: str | None) -> Options:
 
 
 async def save_upload(file: UploadFile) -> tuple[Path, str]:
+    """边读边写到临时文件并计数，超限即停；再按文件头识别类型。任何失败都删除临时文件。"""
     tmp = Path(tempfile.mkstemp(dir=settings.data_dir, suffix=".upload")[1])
-    size = 0
-    limit = settings.max_upload_mb * 1024 * 1024
-    with tmp.open("wb") as fh:
-        while chunk := await file.read(1024 * 1024):
-            size += len(chunk)
-            if size > limit:
-                fh.close()
-                tmp.unlink(missing_ok=True)
-                error(413, "TOO_LARGE", f"文件超过 {settings.max_upload_mb} MB")
-            fh.write(chunk)
+    ok = False
     try:
-        kind = sniff(tmp, Path(file.filename or "").suffix)
+        size = 0
+        limit = settings.max_upload_mb * 1024 * 1024
+        with tmp.open("wb") as fh:
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > limit:
+                    error(413, "TOO_LARGE", f"文件超过 {settings.max_upload_mb} MB")
+                fh.write(chunk)
+        try:
+            kind = await run_in_threadpool(sniff, tmp, Path(file.filename or "").suffix)
+        except InputError as e:
+            error(400, e.code, str(e))
+        typed = tmp.with_suffix("." + EXT[kind])
+        tmp.rename(typed)
+        ok = True
+        return typed, EXT[kind]
+    finally:
+        if not ok:
+            tmp.unlink(missing_ok=True)
+
+
+async def check_pages(tmp: Path, password: str | None) -> int:
+    """快速校验与计页（放到线程池，解析大文件时不阻塞其他请求）。失败时删除临时文件。"""
+    try:
+        _, pages = await run_in_threadpool(count_pages, tmp, password, settings.max_pages)
+        return pages
     except InputError as e:
         tmp.unlink(missing_ok=True)
         error(400, e.code, str(e))
-    typed = tmp.with_suffix("." + EXT[kind])
-    tmp.rename(typed)
-    return typed, EXT[kind]
+    except Exception as e:  # noqa: BLE001  损坏或恶意构造的文件：解析库抛出的各种异常
+        tmp.unlink(missing_ok=True)
+        log.info("upload rejected: %s", type(e).__name__)
+        error(400, "INVALID_FILE", "文件损坏或无法解析")
+
+
+CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' data:; "
+       "connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    """所有响应：禁止被嵌入其他网页、禁止猜测类型、不带来源；页面加 CSP；接口响应默认不缓存（含病案信息）。"""
+    resp = await call_next(request)
+    h = resp.headers
+    h.setdefault("X-Content-Type-Options", "nosniff")
+    h.setdefault("X-Frame-Options", "DENY")
+    h.setdefault("Referrer-Policy", "no-referrer")
+    if h.get("content-type", "").startswith("text/html"):
+        h.setdefault("Content-Security-Policy", CSP)
+    if request.url.path.startswith("/v1/"):
+        h.setdefault("Cache-Control", "no-store")
+    return resp
 
 
 @app.middleware("http")
@@ -169,11 +207,7 @@ async def create_job(
 ):
     opts = parse_options(options, password)
     tmp, ext = await save_upload(file)
-    try:
-        _, pages = count_pages(tmp, opts.password, settings.max_pages)
-    except InputError as e:
-        tmp.unlink(missing_ok=True)
-        error(400, e.code, str(e))
+    pages = await check_pages(tmp, opts.password)
     hours = settings.retention_hours if retention_hours is None else max(0.1, min(float(retention_hours), 24 * 7))
     job_id = store.create(tmp, ext, opts, hours, pages or None)
     return {"job_id": job_id, "pages": pages or None, "status": "queued"}
@@ -317,16 +351,21 @@ async def redact_sync(
     work = Path(tempfile.mkdtemp(dir=settings.data_dir, prefix="sync-"))
     try:
         if tmp.stat().st_size > settings.sync_max_mb * 1024 * 1024:
-            error(413, "TOO_LARGE", "超过同步接口限制（20 MB），请改用 /v1/jobs")
-        _, pages = count_pages(tmp, opts.password, settings.max_pages)
+            error(413, "TOO_LARGE", f"超过同步接口限制（{settings.sync_max_mb} MB），请改用 /v1/jobs")
+        pages = await check_pages(tmp, opts.password)
         if pages > settings.sync_max_pages:
-            error(413, "TOO_LARGE", "超过同步接口限制（10 页），请改用 /v1/jobs")
+            error(413, "TOO_LARGE", f"超过同步接口限制（{settings.sync_max_pages} 页），请改用 /v1/jobs")
         src = work / f"source.{ext}"
         shutil.move(str(tmp), src)
         report = await run_in_threadpool(run, src, work / "out", opts)
         data = (work / "out" / report["output"]).read_bytes()
     except InputError as e:
         error(400, e.code, str(e))
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001  异常信息里可能带有文件内容片段，日志只记类型
+        log.error("sync redact crashed: %s", type(e).__name__)
+        error(500, "INTERNAL", "处理失败，请稍后重试或联系管理员")
     finally:
         tmp.unlink(missing_ok=True)
         shutil.rmtree(work, ignore_errors=True)

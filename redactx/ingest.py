@@ -20,6 +20,14 @@ from .schemas import Char, ImageObject, Line, PageData
 
 # PDFium 不是线程安全的：所有调用都必须串行
 PDFIUM_LOCK = threading.RLock()
+# 单页像素上限：A3 在 600 DPI 下约 7000 万像素。超过的多半是恶意构造的超大页面或解压炸弹，直接拒绝
+MAX_PAGE_PIXELS = 80_000_000
+Image.MAX_IMAGE_PIXELS = MAX_PAGE_PIXELS
+
+
+def _check_pixels(w: float, h: float, i: int) -> None:
+    if w * h > MAX_PAGE_PIXELS:
+        raise InputError("TOO_LARGE", f"第 {i + 1} 页尺寸过大（约 {w * h / 1e6:.0f} 百万像素，上限 {MAX_PAGE_PIXELS // 1_000_000} 百万），请降低分辨率或拆分后重试")
 
 
 class InputError(ValueError):
@@ -132,6 +140,10 @@ def count_pages(path: Path, password: str | None, max_pages: int) -> tuple[str, 
     if kind != "pdf":
         with Image.open(path) as im:
             n = getattr(im, "n_frames", 1)
+            if n > max_pages:
+                raise InputError("TOO_LARGE", f"页数 {n} 超过上限 {max_pages}")
+            for i, fr in enumerate(ImageSequence.Iterator(im)):
+                _check_pixels(fr.width, fr.height, i)
     else:
         try:
             with pikepdf.open(path, password=password or "") as pdf:
@@ -228,6 +240,7 @@ def iter_pages(path: Path, kind: str, dpi: int, password: str | None = None) -> 
                 with PDFIUM_LOCK:
                     page = pdf[i]
                     w_pt, h_pt = page.get_size()
+                    _check_pixels(w_pt * scale, h_pt * scale, i)
                     img = page.render(scale=scale, rotation=0, rev_byteorder=True).to_numpy()
                     if img.ndim == 2:
                         img = np.stack([img] * 3, axis=-1)

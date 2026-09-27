@@ -60,6 +60,7 @@ class JobStore:
             # 服务重启时，未完成的任务标记为失败
             c.execute("UPDATE jobs SET status='failed', error_code='INTERRUPTED', error='服务重启，任务中断，请重新提交' WHERE status IN ('queued','running')")
         self.pool = ThreadPoolExecutor(max_workers=max(1, settings.workers), thread_name_prefix="redact")
+        self._sweep_temp(0)  # 上次运行中断留下的上传临时文件
         threading.Thread(target=self._janitor, daemon=True, name="janitor").start()
 
     def _conn(self):
@@ -80,7 +81,10 @@ class JobStore:
         dst = d / "in" / f"source.{ext}"
         shutil.move(str(src_bytes_path), dst)
         now = time.time()
-        opt_json = json.dumps({k: (sorted(v) if isinstance(v, set) else v) for k, v in asdict(opts).items() if k != "password"}, ensure_ascii=False)
+        # 数据库只存可公开的选项：不存密码；自定义词常是患者姓名，只记数量
+        saved = {k: (sorted(v) if isinstance(v, set) else v) for k, v in asdict(opts).items() if k != "password"}
+        saved["custom_words"] = len(opts.custom_words or [])
+        opt_json = json.dumps(saved, ensure_ascii=False)
         with self._lock, self._conn() as c:
             c.execute(
                 "INSERT INTO jobs (id,status,created,updated,expires,input_ext,pages,progress,message,options) VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -121,8 +125,12 @@ class JobStore:
             log.error("job %s crashed: %s\n%s", job_id, type(e).__name__, "".join(traceback.format_tb(e.__traceback__)[-3:]))
             self._update(job_id, status="failed", error_code="INTERNAL", error="处理失败，请稍后重试或联系管理员", message="失败")
         finally:
-            # 原件处理完即删除；保留脱敏后的页面，复核加框时在其上重打码
-            shutil.rmtree(self.dir(job_id) / "in", ignore_errors=True)
+            # 原件处理完即删除；保留脱敏后的页面，复核加框时在其上重打码。
+            # 转换出的 PDF（含原文文字层）与去水印中间件在失败时也要删掉
+            d = self.dir(job_id)
+            shutil.rmtree(d / "in", ignore_errors=True)
+            shutil.rmtree(d / "out" / "convert", ignore_errors=True)
+            (d / "out" / "wm-clean.pdf").unlink(missing_ok=True)
 
     def review(self, job_id: str, fn, *args) -> dict:
         """复核改动串行执行，并同步更新任务摘要里的遮盖数量。"""
@@ -172,6 +180,21 @@ class JobStore:
                 for job_id in ids:
                     self.delete(job_id)
                     log.info("job %s expired and deleted", job_id)
+                self._sweep_temp(3600)
             except Exception:  # noqa: BLE001
                 log.exception("janitor error")
             time.sleep(300)
+
+    def _sweep_temp(self, max_age: float) -> None:
+        """删除数据目录根下残留的上传临时文件与同步接口工作目录（请求中断、进程被杀时留下的）。"""
+        now = time.time()
+        for p in self.root.iterdir():
+            if not (p.name.endswith(".upload") or p.name.startswith(("tmp", "sync-"))):
+                continue
+            try:
+                if now - p.stat().st_mtime < max_age:
+                    continue
+                shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
+                log.info("removed stale temp %s", p.name)
+            except OSError:
+                pass

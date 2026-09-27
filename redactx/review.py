@@ -50,8 +50,9 @@ def _clean(raw, pages: int, default_style) -> list[dict]:
         style = it.get("style") or default_style(typ)
         if style not in STYLE_CODES and style != "watermark":
             raise ReviewError("INVALID_ITEMS", f"不支持的样式：{style}")
-        out.append({"page": page, "type": typ, "source": str(it.get("source") or "manual"), "style": style,
-                    "alias": it.get("alias") if isinstance(it.get("alias"), str) else None,
+        # 来源与代号会写进报告、画到图上：限制长度
+        out.append({"page": page, "type": typ, "source": str(it.get("source") or "manual")[:32], "style": style,
+                    "alias": it.get("alias")[:64] if isinstance(it.get("alias"), str) else None,
                     "box": [round(x0, 4), round(y0, 4), round(x1, 4), round(y1, 4)]})
     return out
 
