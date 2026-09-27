@@ -258,8 +258,8 @@
 <dialog id="dlg-key">
   <form method="dialog">
     <h3><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg>API Key</h3>
-    <p class="hint">服务端设置了 REDACTX_API_KEY 时才需要填写。只保存在本浏览器。</p>
-    <input type="password" id="key-input" autocomplete="off">
+    <p class="hint" id="key-hint">服务端设置了 REDACTX_API_KEY 时才需要填写。只保存在本浏览器。</p>
+    <input type="password" id="key-input" autocomplete="off" aria-label="API Key">
     <div class="dlg-actions"><button class="btn ghost" value="cancel"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>取消</button><button class="btn primary" value="ok" id="key-save"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>保存</button></div>
   </form>
 </dialog>

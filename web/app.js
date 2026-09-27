@@ -792,12 +792,18 @@
 
   // ---------- 启动 ----------
   async function init() {
+    initKeyDialog();
     // 标题后显示服务版本（/v1/health 不需要 API Key）
     fetch("/v1/health").then((r) => r.json()).then((h) => { const v = $("#brand-ver"); v.textContent = `v${h.version}`; v.hidden = false; exportEnabled = !!h.export; }).catch(() => {});
     try {
       catalog = await (await api("/v1/catalog")).json();
     } catch (e) {
-      toast(e.status === 401 ? "需要 API Key，请点右上角设置" : "无法连接服务");
+      if (e.status === 401) {
+        openKeyDialog(store.get(KEY_KEY, "") ? "API Key 不正确，请重新填写。" : "这个服务需要 API Key 才能使用，请向服务管理员索取后填入。只保存在本浏览器。");
+        toast(store.get(KEY_KEY, "") ? "API Key 不正确" : "需要 API Key");
+      } else {
+        toast("无法连接服务");
+      }
       return;
     }
     load();
@@ -861,8 +867,24 @@
       if (e.key === "0") { e.preventDefault(); setZoom(1); }
     });
 
+  }
+
+  // API Key 对话框：在请求任何数据之前绑定——没有 Key 时页面其余部分加载不出来，这个按钮必须照样能用
+  const KEY_HINT = "服务端设置了 REDACTX_API_KEY 时才需要填写。只保存在本浏览器。";
+  function openKeyDialog(hint) {
     const dlg = $("#dlg-key");
-    $("#btn-key").onclick = () => { $("#key-input").value = store.get(KEY_KEY, ""); dlg.showModal(); };
+    if (dlg.open) return;
+    $("#key-hint").textContent = hint || KEY_HINT;
+    $("#key-input").value = store.get(KEY_KEY, "");
+    dlg.returnValue = "";
+    dlg.showModal();
+    $("#key-input").focus();
+  }
+  function initKeyDialog() {
+    const dlg = $("#dlg-key");
+    $("#btn-key").onclick = () => openKeyDialog();
+    // 表单里第一个按钮是“取消”：输入框里按回车时按保存处理
+    $("#key-input").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); dlg.close("ok"); } });
     dlg.addEventListener("close", () => { if (dlg.returnValue === "ok") { store.set(KEY_KEY, $("#key-input").value.trim()); location.reload(); } });
   }
 
