@@ -351,11 +351,30 @@ textarea:focus, input[type=password]:focus, select:focus { outline: none; box-sh
 /* 手指可按的区域比分隔线宽 */
 .handle::after { content: ""; position: absolute; top: 0; bottom: 0; left: -22px; width: 44px; }
 .before-clip { will-change: clip-path; }
-.handle::before { content: ""; position: absolute; top: 0; bottom: 0; left: -0.5px; width: 1px; background: #171717; }
-.handle span { position: absolute; top: 50%; left: -16px; width: 32px; height: 32px; margin-top: -16px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.12), 0 4px 12px rgba(0,0,0,.18); }
-.handle span::before, .handle span::after { content: ""; position: absolute; top: 11px; border: 5px solid transparent; }
-.handle span::before { left: 2px; border-right-color: #171717; }
-.handle span::after { right: 2px; border-left-color: #171717; }
+/* 分隔线：白色细线外加一圈极淡的深色描边，浅色、深色页面上都清楚 */
+.handle::before { content: ""; position: absolute; top: 0; bottom: 0; left: -1px; width: 2px; background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .14), 0 0 12px rgba(0, 0, 0, .12); }
+/* 手柄：竖向胶囊，内嵌左右箭头；悬停略放大，拖动时收紧，键盘聚焦显示蓝色外圈 */
+.handle .grip { position: absolute; top: 50%; left: 0; width: 28px; height: 44px; transform: translate(-50%, -50%);
+  display: grid; place-items: center; border-radius: 9999px; background: #fff; color: #171717;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .08), 0 1px 2px rgba(0, 0, 0, .08), 0 8px 24px -6px rgba(0, 0, 0, .28);
+  transition: transform .15s ease, box-shadow .15s ease; }
+.handle .grip .ic { width: 16px; height: 16px; stroke-width: 2.2; }
+.handle:hover .grip { transform: translate(-50%, -50%) scale(1.06); box-shadow: 0 0 0 1px rgba(0, 0, 0, .1), 0 2px 4px rgba(0, 0, 0, .1), 0 12px 28px -6px rgba(0, 0, 0, .34); }
+.handle:active .grip { transform: translate(-50%, -50%) scale(.96); }
+.handle:focus-visible { outline: none; }
+.handle:focus-visible .grip { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #0070f3, 0 8px 24px -6px rgba(0, 0, 0, .28); }
+/* 对比视图两个上角的“原件 / 脱敏后”标签 */
+.cmp-label { position: absolute; top: 8px; z-index: 2; pointer-events: none; font: 500 10.5px/1 var(--sans); letter-spacing: .02em; color: #fff;
+  padding: 4px 7px; border-radius: 9999px; background: rgba(23, 23, 23, .56); box-shadow: 0 0 0 1px rgba(255, 255, 255, .12); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.cmp-l { left: 8px; }
+.cmp-r { right: 8px; }
+.stage:has(.handle:active) .cmp-label { opacity: 0; transition: opacity .15s; }  /* 拖动分隔线时让出画面 */
+.stage.mode-after .cmp-label, .stage.mode-before .cmp-label, .stage.reviewing .cmp-label, .stage.img-loading .cmp-label { display: none; }
+/* 原件图加载完之前不显示原件层 */
+.stage.before-loading .before-clip { visibility: hidden; }
+.stage.mode-before.before-loading #img-after { visibility: hidden; }
+@media (prefers-reduced-motion: reduce) { .handle .grip { transition: none; } }
 .stage.mode-after .before-clip, .stage.mode-after .handle { display: none; }
 .stage.mode-before .before-clip { clip-path: none !important; }
 .stage.mode-before .handle, .stage.mode-before .boxes { display: none; }
@@ -488,6 +507,27 @@ dialog input { width: 100%; height: 40px; border: 0; box-shadow: 0 0 0 1px var(-
 .stage.img-loading { height: calc(100% - 32px); max-height: 720px; width: auto; max-width: 100%; aspect-ratio: 1 / 1.414; }
 .stage.img-loading img { opacity: 0; position: absolute; }
 .stage.img-loading .handle, .stage.img-loading .before-clip, .stage.img-loading .boxes { display: none; }
+/* 画布加载指示：盖在画布区正中（在画布外层，不会被分隔线裁切）。Vercel 风格的 12 条旋转指示器 */
+.stage-loader { position: absolute; inset: 0 0 44px; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  pointer-events: none; opacity: 0; transition: opacity .15s ease .12s; font-size: 12.5px; color: var(--body); white-space: nowrap; }
+.viewer-pane:has(.stage.img-loading) .stage-loader, .viewer-pane:has(.stage.mode-before.before-loading) .stage-loader { opacity: 1; }
+.stage-loader #stage-loader-text { padding: 5px 10px; border-radius: 9999px; background: var(--canvas); box-shadow: var(--ring); }
+.spinner { position: relative; width: 24px; height: 24px; }
+.spinner i { position: absolute; left: 40%; top: 46.1%; width: 24%; height: 8%; border-radius: 6px; background: var(--ink); animation: spin-fade 1.2s linear infinite; }
+.spinner i:nth-child(1) { transform: rotate(0deg) translate(146%); animation-delay: -1.2s; }
+.spinner i:nth-child(2) { transform: rotate(30deg) translate(146%); animation-delay: -1.1s; }
+.spinner i:nth-child(3) { transform: rotate(60deg) translate(146%); animation-delay: -1.0s; }
+.spinner i:nth-child(4) { transform: rotate(90deg) translate(146%); animation-delay: -0.9s; }
+.spinner i:nth-child(5) { transform: rotate(120deg) translate(146%); animation-delay: -0.8s; }
+.spinner i:nth-child(6) { transform: rotate(150deg) translate(146%); animation-delay: -0.7s; }
+.spinner i:nth-child(7) { transform: rotate(180deg) translate(146%); animation-delay: -0.6s; }
+.spinner i:nth-child(8) { transform: rotate(210deg) translate(146%); animation-delay: -0.5s; }
+.spinner i:nth-child(9) { transform: rotate(240deg) translate(146%); animation-delay: -0.4s; }
+.spinner i:nth-child(10) { transform: rotate(270deg) translate(146%); animation-delay: -0.3s; }
+.spinner i:nth-child(11) { transform: rotate(300deg) translate(146%); animation-delay: -0.2s; }
+.spinner i:nth-child(12) { transform: rotate(330deg) translate(146%); animation-delay: -0.1s; }
+@keyframes spin-fade { 0% { opacity: 1; } 100% { opacity: .15; } }
+@media (prefers-reduced-motion: reduce) { .spinner i { animation: none; opacity: .5; } }
 
 /* 标题与选项一律不折行：放不下时显示省略号（悬停看全文） */
 .panel h2, .panel-head h2, .job-name, .job-meta, .summary h3, .history h2, dialog h3,

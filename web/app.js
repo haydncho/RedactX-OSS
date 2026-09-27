@@ -63,8 +63,10 @@
     const r = await api(path);
     const url = URL.createObjectURL(await r.blob());
     blobCache.set(path, url);
-    while (blobCache.size > BLOB_MAX) {
-      const [k, u] = blobCache.entries().next().value;
+    const inUse = new Set([...document.querySelectorAll("#stage img, #thumbs img")].map((i) => i.getAttribute("src")));
+    for (const [k, u] of blobCache) {  // 从最久没用的开始释放；正在显示的图不释放
+      if (blobCache.size <= BLOB_MAX) break;
+      if (inUse.has(u)) continue;
       URL.revokeObjectURL(u); blobCache.delete(k);
     }
     return url;
@@ -82,8 +84,10 @@
   const typing = () => /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName);
 
   function clearBlobs() {
-    for (const u of blobCache.values()) URL.revokeObjectURL(u);
+    // 延迟释放：换上新图之前，画面上的旧图仍引用这些地址，立即释放会让浏览器显示缺图标记
+    const old = [...blobCache.values()];
     blobCache.clear();
+    setTimeout(() => old.forEach((u) => URL.revokeObjectURL(u)), 15000);
   }
 
   // ---------- 设置面板 ----------
@@ -376,14 +380,21 @@
       if (c.top < b.top) box.scrollTop -= b.top - c.top + 4; else if (c.bottom > b.bottom) box.scrollTop += c.bottom - b.bottom + 4;
     }
     // 原件图只在对比、原件视图里用到：只看脱敏后时不下载，切换视图时再补
-    const pg = page, needBefore = state.view !== "after";
-    const [a, b] = await Promise.all([imgSrc(preview(pg, "after")), needBefore ? imgSrc(preview(pg, "before")) : null]);
+    const pg = page, needBefore = state.view !== "after", stage = $("#stage"), img = $("#img-after");
+    // 取图期间（带 Key 时要先下载）就显示加载状态；已缓存的页在同一帧内完成，不会闪
+    $("#stage-loader-text").textContent = `正在加载第 ${pg} 页`;
+    stage.classList.add("img-loading");
+    let a, b;
+    try {
+      [a, b] = await Promise.all([imgSrc(preview(pg, "after")), needBefore ? imgSrc(preview(pg, "before")) : null]);
+    } catch (e) {
+      if (pg === page) { stage.classList.remove("img-loading"); toast(`第 ${pg} 页预览加载失败：${e.message}`); }
+      return;
+    }
     if (pg !== page) return;  // 等待期间又翻了页
-    const img = $("#img-after");
-    if (img.getAttribute("src") !== a) $("#stage").classList.add("img-loading");
     img.src = a;
-    if (b) { $("#img-before").src = b; beforePage = pg; }
-    if (img.complete && img.naturalWidth) $("#stage").classList.remove("img-loading");
+    if (b) setBefore(b, pg);
+    if (img.complete && img.naturalWidth) stage.classList.remove("img-loading");
     renderBoxes();
     renderPageItems();
     renderView();
@@ -654,13 +665,22 @@
   }
 
   let beforePage = 0;  // 原件图当前显示的是哪一页
+  // 换原件图：加载完之前隐藏原件层（否则对比视图左侧会露出浏览器的缺图标记，还被分隔线切掉一半）
+  function setBefore(src, pg) {
+    const ib = $("#img-before"), stage = $("#stage");
+    beforePage = pg;
+    if (ib.getAttribute("src") === src && ib.complete && ib.naturalWidth) { stage.classList.remove("before-loading"); return; }
+    stage.classList.add("before-loading");
+    ib.src = src;
+  }
   function renderView() {
     const stage = $("#stage");
     stage.classList.toggle("mode-after", state.view === "after");
     stage.classList.toggle("mode-before", state.view === "before");
     if (state.view !== "after" && job?.id && report && beforePage !== page) {
       const p = page;
-      imgSrc(preview(p, "before")).then((b) => { if (p === page) { $("#img-before").src = b; beforePage = p; } }).catch(() => {});
+      $("#stage").classList.add("before-loading");
+      imgSrc(preview(p, "before")).then((b) => { if (p === page) setBefore(b, p); }).catch(() => {});
     }
   }
 
@@ -724,6 +744,7 @@
     v.addEventListener("gestureend", (e) => e.preventDefault());
     $("#img-after").addEventListener("load", () => { $("#stage").classList.remove("img-loading"); setZoom(zoom); });
     $("#img-after").addEventListener("error", () => $("#stage").classList.remove("img-loading"));
+    $("#img-before").addEventListener("load", () => $("#stage").classList.remove("before-loading"));
     new ResizeObserver(() => setZoom(zoom)).observe(v);
   }
 
@@ -794,7 +815,7 @@
   function initHandle() {
     const stage = $("#stage"), handle = $("#handle"), clip = $("#before-clip");
     let pct = 50, pending = null;
-    // 左侧原件、右侧脱敏后；分隔线位置写进 --split，遮盖框只显示在右侧。拖动时每帧只重绘一次
+    // 左侧原件、右侧脱敏后；分隔线位置写进 --split（右侧的淡蒙板据此定位），遮盖框两侧都显示。拖动时每帧只重绘一次
     const apply = () => {
       pending = null;
       handle.style.left = `${pct}%`;
@@ -1002,6 +1023,8 @@
     $("#sum-total").textContent = "—"; $("#sum-pages").textContent = "—"; $("#sum-foot").textContent = "";
     for (const id of ["#img-after", "#img-before"]) $(id).removeAttribute("src");
     beforePage = 0;
+    $("#stage").classList.add("before-loading");
+    $("#stage-loader-text").textContent = "正在加载页面";
     $("#stage").classList.add("img-loading");
   }
 
