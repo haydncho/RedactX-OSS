@@ -70,7 +70,8 @@ def test_export_coco(tmp_path):
     import zipfile
 
     out, item = _job(tmp_path, editable=True)
-    dest = review.export(out, tmp_path / "e.zip")
+    dest = tmp_path / "e.zip"
+    assert review.export(out, dest) == {"pages": 1, "boxes": 1}
     with zipfile.ZipFile(dest) as z:
         names = z.namelist()
         coco = json.loads(z.read("annotations.json"))

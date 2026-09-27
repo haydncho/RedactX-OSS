@@ -2,6 +2,9 @@
 
 ## 未发布
 
+- 改进：复核台标注体验。点选框后可改它的类型；快捷键 Tab 切换框、[ ] 切换类型、方向键微调（Shift 加大步长）、Delete 删除、Esc 取消、⌘/Ctrl+S 保存；有未保存修改的页在缩略图上标出，复核条显示修改涉及几页，缩略图上的框数随改随更新。
+- 安全：标注导出必须同时设置 `REDACTX_API_KEY`（否则返回 403 `EXPORT_NEEDS_KEY`，启动时记警告，`/v1/health` 的 `export` 为 false）；每次导出记入 `export-audit.log`（时间、任务、页数、框数，不含内容）；导出包按次随机命名，发送后或出错时删除，下载中断留下的在下次导出与“完成复核”时清掉。
+- 修复：文字层里下划线、连字符等细笔画的字框很扁且在基线以下，被单独分成一行（“wxid_abc”丢掉“_”，遮盖框盖不到基线以下）。这类字纵向改用字号框。idtext 96.0% → 100%。
 - 新增：签名检测模型（可选，默认不启用）。`train/detector.py` 在 RT-DETR（PekingU/rtdetr_r18vd，Apache-2.0）上微调，训练数据为 COCO（合成数据用 `bench.to_coco` 生成，真实标注用复核台导出），导出 ONNX；`redactx/detect/detector.py` 推理，`models/detector/`（或 `REDACTX_DETECTOR_DIR`）有模型时接入：签名框大半落在成句印刷文字上的不采用。第一版只用合成数据训练：留出集签名 276/276 找到、无多余框；接入后 harsh 99.0% → 100%、kraft 99.6% → 100%，误遮、多遮 0。印章没学会，仍按颜色规则找。真实签名须用真实标注重训后再启用。
 - 新增：正文人名模型的训练流程 `train/ner.py`（合成语料生成、继续训练、导出 ONNX）。只用合成语料微调时 bench.prose 遮全率 99.2% → 99.7% 但多 2 处误遮，不替换现有模型，等真实标注语料。
 - 新增：`pyproject.toml` 可选依赖组 `train`（torch、transformers、scipy 等，只在训练时用）。

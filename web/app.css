@@ -322,6 +322,8 @@ textarea:focus, input[type=password]:focus, select:focus { outline: none; box-sh
 .rv-type { display: inline-flex; align-items: center; gap: 6px; color: var(--body); white-space: nowrap; }
 .rv-type select { height: 28px; background: var(--canvas); border: 0; box-shadow: 0 0 0 1px var(--hairline); border-radius: 6px; padding: 0 8px; font-size: 13px; max-width: 150px; }
 .rv-dirty { color: var(--mute); white-space: nowrap; }
+.rv-keys { color: var(--mute); font-size: 12px; text-decoration: underline dotted; cursor: help; white-space: pre-line; }
+.thumb.edited::after { content: ""; position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--warning-deep); box-shadow: 0 0 0 2px var(--canvas); }
 .rv-dirty.on { color: var(--ink); font-weight: 500; }
 .btn:disabled { opacity: .4; cursor: default; }
 .stage.reviewing .boxes { pointer-events: auto; cursor: crosshair; }

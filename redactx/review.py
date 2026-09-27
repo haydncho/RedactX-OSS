@@ -119,7 +119,7 @@ def apply(out_dir: Path, raw_items) -> dict:
     return report
 
 
-def export(out_dir: Path, dest: Path) -> Path:
+def export(out_dir: Path, dest: Path) -> dict:
     """导出标注：打码前的原始页面与复核后的全部框，COCO 格式（bbox 为像素 [x, y, 宽, 高]）。
     只有保留原件、尚未完成复核的任务可以导出。导出包含真实内容，调用方负责只在授权的标注环境里使用。"""
     import zipfile
@@ -151,12 +151,14 @@ def export(out_dir: Path, dest: Path) -> Path:
                 "images": images, "annotations": anns,
                 "categories": [{"id": cat_id[c], "name": c, "zh": ENTITY_BY_CODE[c]["name"]} for c in sorted(ENTITY_BY_CODE)]}
         z.writestr("annotations.json", json.dumps(coco, ensure_ascii=False, indent=1))
-    return dest
+    return {"pages": len(images), "boxes": len(anns)}
 
 
 def finish(out_dir: Path) -> dict:
     """复核完成：删除打码前的页面，之后只能再加框。"""
     shutil.rmtree(out_dir / "orig", ignore_errors=True)
+    for f in out_dir.glob("export-*.zip"):  # 下载中断时可能留下的导出包
+        f.unlink(missing_ok=True)
     report = json.loads((out_dir / "report.json").read_text(encoding="utf-8"))
     report.setdefault("review", {}).update(editable=False, finished=True)
     (out_dir / "report.json").write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")

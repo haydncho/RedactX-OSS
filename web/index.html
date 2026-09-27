@@ -191,7 +191,8 @@
         </div>
         <div class="review-bar" id="review-bar" hidden>
           <span class="rv-hint" id="rv-hint"></span>
-          <label class="rv-type"><svg class="ic" aria-hidden="true"><use href="#i-plus-square"/></svg>新框类型<select id="rv-type"></select></label>
+          <label class="rv-type"><svg class="ic" aria-hidden="true"><use href="#i-plus-square"/></svg><span id="rv-type-label">新框类型</span><select id="rv-type"></select></label>
+          <span class="rv-keys" tabindex="0" title="拖动：画新框　点选：选中框&#10;Tab / Shift+Tab：切换本页的框&#10;[ / ]：切换类型（选中框时改它的类型）&#10;方向键：微调所选框（Shift 移动更多）&#10;Delete：删除所选框　Esc：取消选择&#10;⌘/Ctrl + S：保存并重新打码">快捷键</span>
           <button type="button" class="btn ghost sm danger" id="rv-del" disabled><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>删除所选</button>
           <span class="rv-dirty" id="rv-dirty"></span>
           <button type="button" class="btn ghost sm" id="rv-export" hidden title="打码前的原始页面与复核后的框（COCO 格式），供训练检测模型；含真实内容"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>导出标注</button>

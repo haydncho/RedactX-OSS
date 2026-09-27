@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import json
 import logging
+import time
+import uuid
 import shutil
 import tempfile
 from pathlib import Path
@@ -43,6 +45,8 @@ TAGS = [
 app = FastAPI(title="锐消 RedactX", version=__version__, description="病案等文档的本地脱敏服务。全部在本机处理，不调用外部模型。",
               openapi_tags=TAGS, docs_url=None, redoc_url=None)
 store = JobStore(settings.data_dir)
+if settings.allow_export and not settings.api_key:
+    log.warning("已设置 REDACTX_ALLOW_EXPORT=1 但没有设置 REDACTX_API_KEY：导出接口不可用。导出含真实病案内容，须同时设置 API Key")
 
 
 def error(status: int, code: str, message: str):
@@ -121,7 +125,8 @@ async def http_error(_, exc: HTTPException):
 
 @app.get("/v1/health", tags=["系统"], summary="服务状态", description="返回版本号、是否找到打码标签字体、默认渲染分辨率。不需要 API Key。")
 def health():
-    return {"status": "ok", "version": __version__, "font": bool(settings.font_path), "dpi": settings.render_dpi, "export": settings.allow_export}
+    return {"status": "ok", "version": __version__, "font": bool(settings.font_path), "dpi": settings.render_dpi,
+            "export": settings.allow_export and bool(settings.api_key)}
 
 
 @app.get("/v1/catalog", tags=["目录"], summary="完整目录", description="实体分组、实体类型、打码样式与场景预设。Web 页据此生成设置面板。", dependencies=[Depends(auth)])
@@ -237,15 +242,34 @@ async def put_review(job_id: str = PathParam(..., description="任务 ID"), body
 async def export_annotations(job_id: str = PathParam(..., description="任务 ID")):
     if not settings.allow_export:
         error(403, "EXPORT_DISABLED", "未开启标注导出（服务端设置 REDACTX_ALLOW_EXPORT=1 才可用）")
+    if not settings.api_key:
+        error(403, "EXPORT_NEEDS_KEY", "导出含真实病案内容：开启导出时须同时设置 REDACTX_API_KEY")
     _review_job(job_id)
-    dest = store.dir(job_id) / "out" / "export.zip"
+    out = store.dir(job_id) / "out"
+    now = time.time()
+    for old in out.glob("export-*.zip"):  # 下载中断时留下的导出包
+        if now - old.stat().st_mtime > 600:
+            old.unlink(missing_ok=True)
+    dest = out / f"export-{uuid.uuid4().hex}.zip"  # 每次单独的文件：同时导出互不覆盖
     try:
-        await run_in_threadpool(review.export, store.dir(job_id) / "out", dest)
+        counts = await run_in_threadpool(review.export, out, dest)
     except review.ReviewError as e:
+        dest.unlink(missing_ok=True)
         error(409, e.code, str(e))
-    log.info("job %s annotations exported", job_id)
+    except Exception:
+        dest.unlink(missing_ok=True)
+        raise
+    _audit({"event": "export", "job_id": job_id, **counts})
     return FileResponse(dest, media_type="application/zip", filename=f"annotations-{job_id}.zip", headers={"Cache-Control": "no-store"},
                         background=BackgroundTask(dest.unlink, missing_ok=True))
+
+
+def _audit(entry: dict) -> None:
+    """导出审计：只记任务编号、页数、框数与时间，不记任何内容。"""
+    entry = {"time": time.strftime("%Y-%m-%dT%H:%M:%S%z"), **entry}
+    with open(settings.data_dir / "export-audit.log", "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    log.info("annotations exported: %s", entry)
 
 
 @app.post("/v1/jobs/{job_id}/review/finish", tags=["复核"], summary="复核完成",

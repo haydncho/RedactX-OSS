@@ -178,11 +178,15 @@ def _text_layer(page: pdfium.PdfPage, scale: float, height_pt: float) -> list[Ch
         if not ch or ch.isspace() or ch in "\r\n￾￿":
             continue
         left, bottom, right, top = tp.get_charbox(i, loose=False)
+        lleft, lbottom, lright, ltop = tp.get_charbox(i, loose=True)
+        if top - bottom < 0.3 * (ltop - lbottom):
+            # 下划线、连字符等细笔画的紧致框很扁（甚至为 0）、还可能在基线以下：纵向改用字号框，
+            # 否则会被单独分成一行，“wxid_abc”丢掉“_”，遮盖框也盖不到基线以下
+            bottom, top = lbottom, ltop
+            if right - left <= 0:
+                left, right = lleft, lright
         if right - left <= 0 or top - bottom <= 0:
-            # 下划线、连字符等细笔画的紧致框高度可能为 0：改用宽松框（字号高度），免得“wxid_abc”丢掉“_”
-            left, bottom, right, top = tp.get_charbox(i, loose=True)
-            if right - left <= 0 or top - bottom <= 0:
-                continue
+            continue
         # 斜向文字（多为院名水印）不并入正文行：按基线分行会把它们拆散、混进正文。水印另由图像识别消除
         deg = math.degrees(pdfium_c.FPDFText_GetCharAngle(tp.raw, i)) % 90
         if 8 < deg < 82:

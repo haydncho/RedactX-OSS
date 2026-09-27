@@ -425,10 +425,17 @@
     if (!reviewing) return;
     $("#rv-hint").textContent = editable() ? "拖出新框；点选后可拖动、拉伸或按 Delete 删除"
       : report.review?.finished ? "复核已完成，只能再加框：拖出新框" : "未保留原件，只能加框：拖出新框";
-    $("#rv-hint").title = editable() ? "" : "打码前的页面已删除，已有的框不能删除或修改";
+    $("#rv-hint").title = $("#rv-hint").textContent + (editable() ? "" : "（打码前的页面已删除，已有的框不能删除或修改）");
     $("#rv-del").disabled = !(sel && canEdit(sel));
     $("#rv-save").disabled = !dirty;
-    const d = $("#rv-dirty"); d.textContent = dirty ? `未保存 ${dirty} 处修改` : "没有修改"; d.classList.toggle("on", !!dirty);
+    const pages = changedPages();
+    const d = $("#rv-dirty"); d.textContent = dirty ? `未保存 ${dirty} 处修改${pages.size ? `，涉及 ${pages.size} 页` : ""}` : "没有修改"; d.classList.toggle("on", !!dirty);
+    document.querySelectorAll(".thumb").forEach((t, i) => t.classList.toggle("edited", pages.has(i + 1)));
+    // 选中框时，类型下拉框显示并可修改它的类型
+    const ty = $("#rv-type");
+    if (sel && [...ty.options].some((o) => o.value === sel.type)) ty.value = sel.type;
+    else if (!sel && [...ty.options].some((o) => o.value === state.rv_type)) ty.value = state.rv_type;
+    $("#rv-type-label").textContent = sel && canEdit(sel) ? "所选框类型" : "新框类型";
     $("#rv-finish").hidden = !editable();
     $("#rv-export").hidden = !(exportEnabled && editable());
     $("#rv-export").disabled = !!dirty;
@@ -436,10 +443,54 @@
   }
 
   const touched = () => { dirty++; syncReview(); renderBoxes(); };
+  const itemKey = (it) => `${it.page}|${it.type}|${it.box.map((v) => v.toFixed(4)).join(",")}|${it.style || ""}`;
+  // 草稿与已保存的报告不同的页
+  function changedPages() {
+    const out = new Set();
+    if (!reviewing || !report) return out;
+    const count = (items) => { const m = new Map(); for (const it of items) { const k = itemKey(it); m.set(k, (m.get(k) || 0) + 1); } return m; };
+    const a = count(report.items), b = count(draft);
+    for (const [k, n] of a) if ((b.get(k) || 0) !== n) out.add(Number(k.split("|")[0]));
+    for (const [k, n] of b) if ((a.get(k) || 0) !== n) out.add(Number(k.split("|")[0]));
+    return out;
+  }
+  function renderAllThumbCounts() {
+    document.querySelectorAll(".thumb").forEach((t, i) => {
+      const n = itemsOf(i + 1).length; let c = t.querySelector(".tc");
+      if (!c && n) { c = el("span", { class: "tc" }); t.append(c); }
+      if (c) { c.textContent = n; c.hidden = !n; }
+    });
+  }
 
   function deleteSel() {
     if (!sel || !canEdit(sel)) return;
-    draft.splice(draft.indexOf(sel), 1); sel = null; touched(); renderPageItems();
+    draft.splice(draft.indexOf(sel), 1); sel = null; touched(); renderPageItems(); renderAllThumbCounts();
+  }
+
+  function selectNext(dir) {
+    const items = itemsOf(page);
+    if (!items.length) return;
+    const k = sel ? items.indexOf(sel) : -1;
+    sel = items[(k + dir + items.length) % items.length];
+    syncReview(); renderBoxes();
+  }
+
+  function setType(code) {
+    if (sel && canEdit(sel)) {
+      if (sel.type !== code) { sel.type = code; delete sel.style; delete sel.alias; touched(); renderPageItems(); }
+    } else {
+      state.rv_type = code; save();
+    }
+    syncReview();
+  }
+
+  function nudge(dx, dy) {
+    if (!sel || !canEdit(sel)) return;
+    const r = $("#stage").getBoundingClientRect();
+    const [x0, y0, x1, y1] = sel.box, w = x1 - x0, h = y1 - y0;
+    const nx = Math.min(1 - w, Math.max(0, x0 + dx / r.width)), ny = Math.min(1 - h, Math.max(0, y0 + dy / r.height));
+    sel.box = [nx, ny, nx + w, ny + h].map((v) => Math.round(v * 10000) / 10000);
+    touched();
   }
 
   async function saveReview() {
@@ -458,7 +509,7 @@
     const sel_ = $("#rv-type");
     for (const e of catalog.entities.filter((e) => !["WATERMARK", "CUSTOM"].includes(e.code))) sel_.append(el("option", { value: e.code, text: e.name }));
     if ([...sel_.options].some((o) => o.value === state.rv_type)) sel_.value = state.rv_type;
-    sel_.onchange = () => { state.rv_type = sel_.value; save(); };
+    sel_.onchange = () => setType(sel_.value);
     $("#btn-review").onclick = () => {
       if (!reviewing) return startReview();
       if (dirty && !confirm("有未保存的修改，放弃吗？")) return;
@@ -529,24 +580,33 @@
       if (mode === "draw" && (it.box[2] - it.box[0] < 0.005 || it.box[3] - it.box[1] < 0.004)) {
         draft.splice(draft.indexOf(it), 1); sel = null; syncReview(); renderBoxes(); return;
       }
-      if (mode === "draw" || moved) { touched(); renderPageItems(); renderThumbCount(); }
+      if (mode === "draw" || moved) { touched(); renderPageItems(); renderAllThumbCounts(); }
     };
     layer.addEventListener("pointerup", end);
     layer.addEventListener("pointercancel", end);
+    // 复核快捷键；先于翻页、缩放等全局快捷键处理，处理过的不再往下传
     window.addEventListener("keydown", (e) => {
-      if (!reviewing || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName)) return;
-      if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); deleteSel(); }
-      if (e.key === "Escape") { sel = null; syncReview(); renderBoxes(); }
+      if (!reviewing || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName) || document.querySelector("dialog[open]")) return;
+      const done = () => { e.preventDefault(); e.stopImmediatePropagation(); };
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { done(); if (dirty) saveReview(); return; }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === "Delete" || e.key === "Backspace") { done(); deleteSel(); }
+      else if (e.key === "Escape") { done(); sel = null; syncReview(); renderBoxes(); }
+      else if (e.key === "Tab") { done(); selectNext(e.shiftKey ? -1 : 1); }
+      else if (e.key === "[" || e.key === "]") {
+        done();
+        const opts = [...$("#rv-type").options].map((o) => o.value);
+        const cur = opts.indexOf($("#rv-type").value);
+        setType(opts[(cur + (e.key === "]" ? 1 : -1) + opts.length) % opts.length]);
+      } else if (sel && canEdit(sel) && e.key.startsWith("Arrow")) {
+        done();
+        const s = e.shiftKey ? 10 : 1;
+        nudge(e.key === "ArrowLeft" ? -s : e.key === "ArrowRight" ? s : 0, e.key === "ArrowUp" ? -s : e.key === "ArrowDown" ? s : 0);
+      }
     });
     window.addEventListener("beforeunload", (e) => { if (reviewing && dirty) e.preventDefault(); });
   }
 
-  function renderThumbCount() {
-    const t = document.querySelectorAll(".thumb")[page - 1]; if (!t) return;
-    const n = itemsOf(page).length; let c = t.querySelector(".tc");
-    if (!c && n) { c = el("span", { class: "tc" }); t.append(c); }
-    if (c) { c.textContent = n; c.hidden = !n; }
-  }
 
   const SRC_NAME = { rule: "规则", anchor: "字段锚定", "anchor-field": "填写区", propagate: "全文追踪", custom: "自定义词", color: "颜色", detector: "检测", "image-object": "图片对象", repeat: "跨页重复", watermark: "水印消除", verify: "自检补打", manual: "人工添加", ner: "正文识别", model: "检测模型", template: "表单模板", "beside-org": "院名旁图形" };
   function renderPageItems() {
