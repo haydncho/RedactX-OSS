@@ -303,19 +303,30 @@ textarea:focus, input[type=password]:focus, select:focus { outline: none; box-sh
 .thumb .tc { position: absolute; left: 4px; top: 4px; font: 500 10px/1 var(--mono); background: var(--canvas); color: var(--ink); box-shadow: var(--ring); padding: 3px 5px; border-radius: 9999px; }
 .viewer-pane { position: relative; min-height: 0; min-width: 0; }
 /* flex + margin:auto 居中：放大后内容超出时仍能滚动到左、上边缘（grid 居中会被裁掉） */
-.viewer { height: 100%; background-color: var(--stage); border-radius: 8px; box-shadow: var(--ring); overflow: auto; display: flex; padding: 20px 20px 64px; position: relative; overscroll-behavior: contain;
+.viewer { height: 100%; background-color: var(--stage); border-radius: 8px; box-shadow: var(--ring); overflow: auto; display: flex; padding: 12px 12px 56px; position: relative; overscroll-behavior: contain;
   background-image: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--hairline-strong) 45%, transparent) 1px, transparent 0); background-size: 16px 16px; }
 .stage { position: relative; margin: auto; flex: none; line-height: 0; box-shadow: var(--e5); border-radius: 2px; user-select: none; }
 .stage img { display: block; }
 #img-after { width: var(--page-w, auto); height: auto; max-width: none; }
-.zoombar { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; padding: 4px; background: var(--canvas); border-radius: 9999px; box-shadow: var(--e4); z-index: 2; }
-.zoombar button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 28px; min-width: 28px; padding: 0 8px; border: 0; border-radius: 9999px; background: none; color: var(--ink); font-size: 16px; line-height: 1; cursor: pointer; }
-.zoombar button:hover:not(:disabled) { background: var(--canvas-soft-2); }
-.zoombar button:disabled { color: var(--mute); cursor: default; }
-.zoombar #zoom-level { min-width: 56px; font-size: 12px; }
-.zoombar .zfit { font-size: 13px; }
-.zsep { width: 1px; height: 16px; background: var(--hairline); margin: 0 4px; }
-.zoombar #pan-tool[aria-pressed="true"] { background: var(--primary); color: var(--on-primary); }
+/* 缩放工具条：悬浮在画布下沿的磨砂胶囊（与对比手柄的玻璃质感呼应），紧贴页面下方 */
+.zoombar { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 2; display: flex; align-items: center; gap: 2px; padding: 3px;
+  border-radius: 9999px; background: color-mix(in srgb, var(--canvas) 78%, transparent);
+  -webkit-backdrop-filter: blur(12px) saturate(170%); backdrop-filter: blur(12px) saturate(170%);
+  box-shadow: 0 0 0 1px var(--hairline), inset 0 1px 0 var(--zb-hi), 0 1px 2px rgba(0, 0, 0, .06), 0 8px 24px -8px rgba(0, 0, 0, .22); }
+.zoombar button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 30px; min-width: 30px; padding: 0 8px; border: 0; border-radius: 9999px;
+  background: none; color: var(--body); font-size: 13px; line-height: 1; cursor: pointer; transition: background .12s ease, color .12s ease; }
+.zoombar button .ic { width: 16px; height: 16px; }
+.zoombar button:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
+.zoombar button:active:not(:disabled) { background: color-mix(in srgb, var(--ink) 11%, transparent); }
+.zoombar button:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.zoombar button:disabled { color: var(--mute); opacity: .55; cursor: default; }
+.zoombar #zoom-level { min-width: 52px; font: 500 12px/1 var(--mono); color: var(--ink); letter-spacing: -.01em; }
+.zoombar .zfit { padding: 0 10px 0 8px; font-weight: 500; }
+.zsep { width: 1px; height: 16px; background: var(--hairline); margin: 0 3px; }
+.zoombar #pan-tool[aria-pressed="true"] { background: var(--ink); color: var(--canvas); }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .zoombar { background: var(--canvas); } }
+:root { --zb-hi: rgba(255, 255, 255, .6); }  /* 工具条上沿高光 */
+:root[data-theme="dark"] { --zb-hi: rgba(255, 255, 255, .07); }
 /* 手形拖动：拖动画布平移；此时点击不移动对比分隔线 */
 .viewer.pan, .viewer.pan .stage { cursor: grab; }
 .viewer.panning, .viewer.panning .stage { cursor: grabbing; }
@@ -483,7 +494,9 @@ dialog input { width: 100%; height: 40px; border: 0; box-shadow: 0 0 0 1px var(-
   .summary.off .sum-toggle .ic { transform: rotate(90deg); }
   .summary.off .sum-title { display: inline; }
   .summary.off .sum-mini { writing-mode: horizontal-tb; }
-  .viewer-pane { height: 72vh; }
+  /* 单栏：画布高度取竖版 A4 按宽度放满时刚好的高度（容器宽减去左右内边距 12×2，再加上下 12 + 56），不超过屏高的 72% */
+  .viewer-wrap { container-type: inline-size; }
+  .viewer-pane { height: min(72vh, calc((100cqw - 24px) * 1.4142 + 68px)); }
   .thumbs { flex-direction: row; overflow-x: auto; }
   .thumb { width: 72px; height: 94px; }
   .dropzone { grid-template-columns: minmax(0, 1fr); padding: 32px 24px; min-height: 0; }
@@ -530,7 +543,7 @@ dialog input { width: 100%; height: 40px; border: 0; box-shadow: 0 0 0 1px var(-
 .stage.img-loading img { opacity: 0; position: absolute; }
 .stage.img-loading .handle, .stage.img-loading .before-clip, .stage.img-loading .boxes { display: none; }
 /* 画布加载指示：盖在画布区正中（在画布外层，不会被分隔线裁切）。Vercel 风格的 12 条旋转指示器 */
-.stage-loader { position: absolute; inset: 0 0 44px; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+.stage-loader { position: absolute; inset: 0 0 48px; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
   pointer-events: none; opacity: 0; transition: opacity .15s ease .12s; font-size: 12.5px; color: var(--body); white-space: nowrap; }
 .viewer-pane:has(.stage.img-loading) .stage-loader, .viewer-pane:has(.stage.mode-before.before-loading) .stage-loader { opacity: 1; }
 .stage-loader #stage-loader-text { padding: 5px 10px; border-radius: 9999px; background: var(--canvas); box-shadow: var(--ring); }
