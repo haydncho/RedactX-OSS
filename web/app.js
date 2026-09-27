@@ -820,13 +820,21 @@
       upload(f);
     };
     $("#pick").addEventListener("click", (e) => e.stopPropagation());  // label 自己会打开选择器，不再冒泡到拖放区
-    $("#pick-img").addEventListener("click", (e) => e.stopPropagation());
-    $("#file-img").onchange = (e) => { take(e.target.files[0]); e.target.value = ""; };
+    // “照片/图片”：底部菜单给出“拍照”“从相册选择”两个明确的入口（各用一个文件框，不依赖浏览器默认行为）
+    const sheet = $("#dlg-photo");
+    $("#pick-img").addEventListener("click", (e) => { e.stopPropagation(); sheet.returnValue = ""; sheet.showModal(); });
+    sheet.addEventListener("click", (e) => { if (e.target === sheet) sheet.close(); });  // 点菜单外的遮罩收起
+    for (const lab of sheet.querySelectorAll(".sheet-item")) {
+      lab.addEventListener("click", () => setTimeout(() => sheet.close(), 0));  // 文件选择器打开后收起菜单
+      lab.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); lab.click(); } });
+    }
+    for (const id of ["#file-cam", "#file-img"]) $(id).onchange = (e) => { take(e.target.files[0]); e.target.value = ""; };
     // 手机、平板：可选类型里有图片时，系统先弹“照片图库 / 拍照”。“选择文件”只收文档，直接进入文件选择器；
     // 照片与拍照走单独的“照片/图片”按钮
     if (matchMedia("(pointer: coarse)").matches) $("#file").accept = DOC_ACCEPT;
     $("#pick").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pickFile(); } });
-    drop.onclick = (e) => { if (!e.target.closest("#pick, #pick-img")) pickFile(); };
+    // 文件框被按钮“点击”时，这次点击会冒泡到拖放区：不能再打开一次“选择文件”，否则后打开的会顶掉先打开的
+    drop.onclick = (e) => { if (!e.target.closest("#pick, #pick-img, input[type=file]")) pickFile(); };
     drop.onkeydown = (e) => { if (e.target === drop && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); pickFile(); } };
     $("#file").onchange = (e) => { take(e.target.files[0]); e.target.value = ""; };
     ["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
