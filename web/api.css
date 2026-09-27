@@ -72,3 +72,23 @@ pre.code code { background: none; box-shadow: none; padding: 0; font-size: inher
   .api-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
   .api-intro h1 { font-size: 26px; line-height: 34px; }
 }
+
+/* 窄屏：接口目录改为隐藏层，点顶部“目录”从左侧滑出，点目录项、遮罩、Esc 或关闭按钮收起 */
+.nav-toggle, .nav-head { display: none; }
+@media (max-width: 900px) {
+  .nav-toggle { display: inline-flex; }
+  .api-nav { position: fixed; top: 0; left: 0; bottom: 0; z-index: 60; width: min(300px, 86vw); max-height: none; padding: 12px 12px 24px;
+    background: var(--canvas); box-shadow: var(--e5); overflow-y: auto; align-content: start;
+    transform: translateX(-104%); visibility: hidden; transition: transform .22s ease, visibility 0s linear .22s; }
+  .api-nav.open { transform: none; visibility: visible; transition: transform .22s ease; }
+  .nav-head { display: flex; align-items: center; justify-content: space-between; position: sticky; top: -12px; z-index: 1; margin: -12px -12px 4px; padding: 12px 12px 10px 20px;
+    background: var(--canvas); box-shadow: 0 1px 0 var(--hairline); font-weight: 600; font-size: 15px; }
+  .nav-close { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 8px; background: none; color: var(--body); cursor: pointer; }
+  .nav-close:hover { background: var(--canvas-soft-2); color: var(--ink); }
+  .api-nav a { padding: 10px 8px; }
+  .nav-backdrop { position: fixed; inset: 0; z-index: 59; background: rgba(0, 0, 0, .38); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); animation: nav-fade .2s ease; }
+  body.nav-open { overflow: hidden; }
+}
+@keyframes nav-fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .api-nav, .api-nav.open { transition: none; } .nav-backdrop { animation: none; } }
+

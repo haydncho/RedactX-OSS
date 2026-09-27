@@ -17,6 +17,8 @@
   <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/></symbol>
   <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/></symbol>
   <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
   <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2V5Z"/><path d="M4 19a2 2 0 0 1 2-2h13v4H6a2 2 0 0 1-2-2Z"/></symbol>
 </defs></svg>
 
@@ -26,13 +28,15 @@
     <span class="brand-name">RedactX</span><span class="brand-dot" aria-hidden="true">·</span><span class="brand-name">锐消</span><span class="brand-ver num" id="brand-ver" hidden></span><span class="brand-sep" aria-hidden="true">/</span><span class="brand-en">接口文档</span>
   </div>
   <div class="topbar-right">
+    <button type="button" class="nav-btn nav-toggle" id="nav-open" aria-controls="api-nav" aria-expanded="false" aria-label="接口目录" title="接口目录"><svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg><span class="tl-text">目录</span></button>
     <a class="toplink" href="/openapi.json" target="_blank" rel="noopener" aria-label="openapi.json" title="openapi.json"><svg class="ic" aria-hidden="true"><use href="#i-json"/></svg><span class="tl-text">openapi.json</span></a>
     <a class="nav-btn" href="/" aria-label="返回控制台" title="返回控制台"><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg><span class="tl-text">返回控制台</span></a>
   </div>
 </header>
 
 <div class="api-layout">
-  <nav class="api-nav" id="api-nav" aria-label="接口目录"></nav>
+  <div class="nav-backdrop" id="nav-backdrop" hidden></div>
+  <nav class="api-nav" id="api-nav" aria-label="接口目录"><div class="nav-head"><span>接口目录</span><button type="button" class="nav-close" id="nav-close" aria-label="关闭目录"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button></div></nav>
   <main class="api-main" id="api-main">
     <section class="api-intro">
       <span class="eyebrow">REST API</span>

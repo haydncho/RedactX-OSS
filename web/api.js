@@ -163,5 +163,40 @@
     catalogTables();
   }
 
+  // 窄屏的接口目录隐藏层
+  function initNavDrawer() {
+    const nav = $("#api-nav"), btn = $("#nav-open"), backdrop = $("#nav-backdrop");
+    const narrow = matchMedia("(max-width: 900px)");
+    const isOpen = () => nav.classList.contains("open");
+    function open() {
+      nav.classList.add("open"); backdrop.hidden = false; document.body.classList.add("nav-open");
+      btn.setAttribute("aria-expanded", "true"); nav.setAttribute("role", "dialog"); nav.setAttribute("aria-modal", "true");
+      $("#nav-close").focus();
+    }
+    function close(returnFocus = true) {
+      if (!isOpen()) return;
+      nav.classList.remove("open"); backdrop.hidden = true; document.body.classList.remove("nav-open");
+      btn.setAttribute("aria-expanded", "false"); nav.removeAttribute("role"); nav.removeAttribute("aria-modal");
+      if (returnFocus) btn.focus();
+    }
+    btn.addEventListener("click", () => (isOpen() ? close() : open()));
+    $("#nav-close").addEventListener("click", () => close());
+    backdrop.addEventListener("click", () => close());
+    // 点目录项：跳转后收起
+    nav.addEventListener("click", (e) => { if (e.target.closest("a") && narrow.matches) close(false); });
+    document.addEventListener("keydown", (e) => {
+      if (!isOpen()) return;
+      if (e.key === "Escape") { e.preventDefault(); close(); return; }
+      if (e.key === "Tab") { // 焦点留在目录里
+        const f = [...nav.querySelectorAll("a, button")].filter((x) => x.offsetParent);
+        if (!f.length) return;
+        if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+        else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+      }
+    });
+    narrow.addEventListener("change", () => { if (!narrow.matches) close(false); });
+  }
+
+  initNavDrawer();
   init().catch(() => { $("#api-endpoints").append(el("p", { class: "api-foot", text: "读取 /openapi.json 失败" })); });
 })();
