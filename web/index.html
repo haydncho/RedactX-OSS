@@ -59,7 +59,7 @@
   <aside class="settings" aria-label="脱敏设置">
     <section class="panel">
       <h2 data-eyebrow="PRESET"><svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg>场景预设</h2>
-      <div class="presets" id="presets" role="radiogroup" aria-label="场景预设"></div>
+      <div class="presets" id="presets" role="radiogroup" aria-label="场景预设" aria-busy="true"><div class="sk-preset" aria-hidden="true"><span class="skel sk-bar"></span><span class="skel sk-line w60"></span><span class="skel sk-line w90"></span></div><div class="sk-preset" aria-hidden="true"><span class="skel sk-bar"></span><span class="skel sk-line w60"></span><span class="skel sk-line w90"></span></div><div class="sk-preset" aria-hidden="true"><span class="skel sk-bar"></span><span class="skel sk-line w60"></span><span class="skel sk-line w90"></span></div><div class="sk-preset" aria-hidden="true"><span class="skel sk-bar"></span><span class="skel sk-line w60"></span><span class="skel sk-line w90"></span></div></div>
     </section>
 
     <section class="panel">
@@ -67,7 +67,7 @@
         <h2 data-eyebrow="FIELDS"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg>脱敏字段与样式</h2>
         <div class="mini-actions"><button type="button" id="sel-toggle"><svg class="ic" aria-hidden="true"><use href="#i-check-all"/></svg><span class="lb">全选</span></button></div>
       </div>
-      <div id="entity-groups"></div>
+      <div id="entity-groups" aria-busy="true"><div class="sk-group" aria-hidden="true"><span class="skel sk-line w30"></span><div class="sk-ent"><span class="skel sk-box"></span><span class="skel sk-line w70"></span><span class="skel sk-pill"></span></div><div class="sk-ent"><span class="skel sk-box"></span><span class="skel sk-line w55"></span><span class="skel sk-pill"></span></div><div class="sk-ent"><span class="skel sk-box"></span><span class="skel sk-line w75"></span><span class="skel sk-pill"></span></div><div class="sk-ent"><span class="skel sk-box"></span><span class="skel sk-line w45"></span><span class="skel sk-pill"></span></div><div class="sk-ent"><span class="skel sk-box"></span><span class="skel sk-line w60"></span><span class="skel sk-pill"></span></div><div class="sk-ent"><span class="skel sk-box"></span><span class="skel sk-line w70"></span><span class="skel sk-pill"></span></div><div class="sk-ent"><span class="skel sk-box"></span><span class="skel sk-line w50"></span><span class="skel sk-pill"></span></div><div class="sk-ent"><span class="skel sk-box"></span><span class="skel sk-line w65"></span><span class="skel sk-pill"></span></div></div></div>
     </section>
 
     <section class="panel">
@@ -232,9 +232,9 @@
       </div>
     </section>
 
-    <section class="history" id="history-wrap" hidden>
+    <section class="history" id="history-wrap">
       <div class="history-head"><h2><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg>最近任务</h2><span class="eyebrow">RECENT JOBS</span></div>
-      <ul id="history"></ul>
+      <ul id="history" aria-busy="true"><li class="sk-hist" aria-hidden="true"><span class="skel sk-line w80"></span><span class="sk-col"><span class="skel sk-line w50"></span><span class="skel sk-line w30"></span></span><span class="skel sk-pill"></span></li><li class="sk-hist" aria-hidden="true"><span class="skel sk-line w80"></span><span class="sk-col"><span class="skel sk-line w50"></span><span class="skel sk-line w30"></span></span><span class="skel sk-pill"></span></li><li class="sk-hist" aria-hidden="true"><span class="skel sk-line w80"></span><span class="sk-col"><span class="skel sk-line w50"></span><span class="skel sk-line w30"></span></span><span class="skel sk-pill"></span></li></ul>
     </section>
   </main>
 </div>

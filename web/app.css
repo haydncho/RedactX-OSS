@@ -416,3 +416,35 @@ dialog input { width: 100%; height: 40px; border: 0; box-shadow: 0 0 0 1px var(-
 #btn-key.connected .ic { display: none; }
 .dlg-actions .key-clear { margin-right: auto; }
 
+/* 骨架屏：数据与图片加载完成前显示内容轮廓与流光；减少动态效果时不播放动画 */
+:root { --skel-a: #f1f1f1; --skel-b: #e3e3e3; }
+:root[data-theme="dark"] { --skel-a: #1b1b1e; --skel-b: #2a2a2f; }
+.skel { display: block; border-radius: 6px; background: linear-gradient(90deg, var(--skel-a) 25%, var(--skel-b) 37%, var(--skel-a) 63%); background-size: 400% 100%; animation: skel 1.4s ease-in-out infinite; }
+@keyframes skel { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+@media (prefers-reduced-motion: reduce) { .skel, .thumb.img-loading, .stage.img-loading { animation: none !important; } }
+.sk-line { height: 10px; }
+.sk-line.w30 { width: 30%; } .sk-line.w45 { width: 45%; } .sk-line.w50 { width: 50%; } .sk-line.w55 { width: 55%; } .sk-line.w60 { width: 60%; }
+.sk-line.w65 { width: 65%; } .sk-line.w70 { width: 70%; } .sk-line.w75 { width: 75%; } .sk-line.w80 { width: 80%; } .sk-line.w90 { width: 90%; }
+.sk-preset { display: grid; gap: 8px; padding: 10px; border-radius: 8px; box-shadow: 0 0 0 1px var(--hairline); }
+.sk-bar { height: 16px; }
+.sk-group { display: grid; gap: 12px; padding-top: 4px; }
+.sk-ent { display: grid; grid-template-columns: 16px minmax(0, 1fr) 124px; align-items: center; gap: 10px; }
+.sk-box { width: 16px; height: 16px; border-radius: 4px; }
+.sk-pill { width: 100%; max-width: 124px; height: 28px; border-radius: 9999px; }
+.history li.sk-hist { grid-template-columns: 96px 1fr 72px; }
+.sk-col { display: grid; gap: 8px; }
+.sk-hist .sk-pill { width: 72px; height: 22px; }
+/* 打开任务时的结果区骨架 */
+.sk-thumb { flex: none; height: 112px; border-radius: 6px; }
+.sk-count { display: grid; grid-template-columns: 8px minmax(0, 1fr) 24px; gap: 10px; align-items: center; padding: 6px 0; }
+.sk-count .skel:first-child { width: 8px; height: 8px; border-radius: 50%; }
+.result.loading .viewer-bar { pointer-events: none; opacity: .5; }
+.result.loading .zoombar { visibility: hidden; }
+.sk-page { width: min(62%, 520px); aspect-ratio: 1 / 1.414; margin: auto; border-radius: 2px; }
+/* 图片下载完之前：缩略图与画布显示流光 */
+.thumb.img-loading, .stage.img-loading { background: linear-gradient(90deg, var(--skel-a) 25%, var(--skel-b) 37%, var(--skel-a) 63%); background-size: 400% 100%; animation: skel 1.4s ease-in-out infinite; }
+.thumb.img-loading img { opacity: 0; }
+.stage.img-loading { height: calc(100% - 32px); max-height: 720px; width: auto; max-width: 100%; aspect-ratio: 1 / 1.414; }
+.stage.img-loading img { opacity: 0; position: absolute; }
+.stage.img-loading .handle, .stage.img-loading .before-clip, .stage.img-loading .boxes { display: none; }
+

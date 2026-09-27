@@ -116,6 +116,7 @@
   function renderPresets() {
     const box = $("#presets");
     box.replaceChildren();
+    box.setAttribute("aria-busy", "false");
     for (const p of catalog.presets) {
       const sty = p.code === "audit" ? "label" : p.default_style;
       box.append(el("button", {
@@ -130,6 +131,7 @@
   function renderEntities() {
     const root = $("#entity-groups");
     root.replaceChildren();
+    root.setAttribute("aria-busy", "false");
     for (const g of catalog.groups) {
       const ents = catalog.entities.filter((e) => e.group === g.key && e.code !== "CUSTOM");
       if (!ents.length) continue;
@@ -299,6 +301,7 @@
     $("#job-meta").textContent = `${report.pages} 页 · 用时 ${secs < 60 ? secs + " 秒" : (secs / 60).toFixed(1) + " 分钟"} · 保留至 ${new Date(j.expires * 1000).toLocaleString("zh-CN", { hour12: false })}`;
     $("#progress").hidden = true;
     $("#result").hidden = false;
+    $("#result").classList.remove("loading");
     const dl = $("#btn-download");
     dl.hidden = false;
     dl.href = `/v1/jobs/${job.id}/result`;
@@ -348,13 +351,18 @@
       for (const en of entries) {
         if (!en.isIntersecting) continue;
         const img = en.target.querySelector("img");
-        if (!img.src) img.src = await imgSrc(preview(img.dataset.p, "after"));
+        if (!img.src) {
+          const done = () => img.closest(".thumb")?.classList.remove("img-loading");
+          img.addEventListener("load", done, { once: true });
+          img.addEventListener("error", done, { once: true });
+          img.src = await imgSrc(preview(img.dataset.p, "after"));
+        }
         io.unobserve(en.target);
       }
     }, { root: box, rootMargin: "200px" });
     for (let p = 1; p <= report.pages; p++) {
       const n = itemsOf(p).length;
-      const b = el("button", { class: "thumb", type: "button", "aria-label": `第 ${p} 页`, onclick: () => gotoPage(p) },
+      const b = el("button", { class: "thumb img-loading", type: "button", "aria-label": `第 ${p} 页`, onclick: () => gotoPage(p) },
         el("img", { alt: "", "data-p": p }), el("span", { class: "tn", text: p }), n ? el("span", { class: "tc", text: n }) : null);
       box.append(b); io.observe(b);
     }
@@ -368,8 +376,11 @@
     document.querySelectorAll(".thumb").forEach((t, i) => t.setAttribute("aria-current", String(i + 1 === page)));
     const cur = document.querySelectorAll(".thumb")[page - 1]; cur?.scrollIntoView({ block: "nearest" });
     const [a, b] = await Promise.all([imgSrc(preview(page, "after")), imgSrc(preview(page, "before"))]);
-    $("#img-after").src = a;
+    const img = $("#img-after");
+    if (img.getAttribute("src") !== a) $("#stage").classList.add("img-loading");
+    img.src = a;
     $("#img-before").src = b;
+    if (img.complete && img.naturalWidth) $("#stage").classList.remove("img-loading");
     renderBoxes();
     renderPageItems();
     renderView();
@@ -687,7 +698,8 @@
     v.addEventListener("gesturestart", (e) => { e.preventDefault(); g0 = zoom; });
     v.addEventListener("gesturechange", (e) => { e.preventDefault(); setZoom(g0 * e.scale, { x: e.clientX, y: e.clientY }); });
     v.addEventListener("gestureend", (e) => e.preventDefault());
-    $("#img-after").addEventListener("load", () => setZoom(zoom));
+    $("#img-after").addEventListener("load", () => { $("#stage").classList.remove("img-loading"); setZoom(zoom); });
+    $("#img-after").addEventListener("error", () => $("#stage").classList.remove("img-loading"));
     new ResizeObserver(() => setZoom(zoom)).observe(v);
   }
 
@@ -762,7 +774,7 @@
       const all = await (await api("/v1/jobs?limit=100")).json();
       if (all.length < 100) jobNames.keepOnly(all.map((j) => j.id));  // 服务端已删除或过期的任务，本地记的文件名也清掉
       const list = all.slice(0, 12);
-      const ul = $("#history"); ul.replaceChildren();
+      const ul = $("#history"); ul.replaceChildren(); ul.setAttribute("aria-busy", "false");
       $("#history-wrap").hidden = !list.length;
       const ST = { succeeded: "完成", failed: "失败", running: "处理中", queued: "排队" };
       for (const j of list) {
@@ -777,6 +789,7 @@
           j.status === "succeeded" ? el("button", { type: "button", onclick: () => openJob(j.id, j.input_ext) }, icon("eye"), "查看") : el("span")));
       }
     } catch (e) {
+      $("#history").replaceChildren(); $("#history").setAttribute("aria-busy", "false"); $("#history-wrap").hidden = true;
       if (e.status === 401) toast("需要 API Key，请点右上角设置");
     }
   }
@@ -785,6 +798,7 @@
     job = { id, name: jobNames.get(id) || `任务 ${id.slice(4, 12)}`, kind: (ext || "").toUpperCase() };
     blobCache.clear(); typeFilter = null;
     showJob();
+    showResultSkeleton();
     const j = await (await api(`/v1/jobs/${id}`)).json();
     await loadResult(j);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -804,6 +818,7 @@
       } else {
         toast("无法连接服务");
       }
+      clearSkeletons();
       return;
     }
     // 填了 Key 且服务接受：右上角按钮显示“已连接”
@@ -873,6 +888,25 @@
       if (e.key === "0") { e.preventDefault(); setZoom(1); }
     });
 
+  }
+
+  // 骨架屏：数据加载失败时清掉，免得一直闪
+  function clearSkeletons() {
+    for (const id of ["#presets", "#entity-groups", "#history"]) { const n = $(id); n.replaceChildren(); n.setAttribute("aria-busy", "false"); }
+    $("#history-wrap").hidden = true;
+  }
+
+  // 打开任务：报告加载完之前，结果区先显示轮廓
+  function showResultSkeleton() {
+    $("#progress").hidden = true;
+    const r = $("#result"); r.hidden = false; r.classList.add("loading");
+    $("#thumbs").replaceChildren(...Array.from({ length: 5 }, () => el("span", { class: "skel sk-thumb", "aria-hidden": "true" })));
+    $("#counts").replaceChildren(...Array.from({ length: 7 }, (_, k) => el("li", { class: "sk-count", "aria-hidden": "true" }, el("span", { class: "skel" }), el("span", { class: `skel sk-line w${[70, 55, 60, 45, 65, 50, 60][k]}` }), el("span", { class: "skel sk-line" }))));
+    $("#page-items").replaceChildren();
+    $("#boxes").replaceChildren();
+    $("#sum-total").textContent = "—"; $("#sum-pages").textContent = "—"; $("#sum-foot").textContent = "";
+    for (const id of ["#img-after", "#img-before"]) $(id).removeAttribute("src");
+    $("#stage").classList.add("img-loading");
   }
 
   // API Key 对话框：在请求任何数据之前绑定——没有 Key 时页面其余部分加载不出来，这个按钮必须照样能用
