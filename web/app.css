@@ -532,4 +532,10 @@ input[type="checkbox"]:focus-visible, .switch:focus-visible { outline: none; box
 /* 文件框：视觉隐藏但保留在页面里（display:none 的文件框在部分手机浏览器上无法由按钮打开） */
 .file-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; clip-path: inset(50%); pointer-events: none; }
 label.btn { user-select: none; }
+/* 只在触屏设备上显示（手机、平板）：照片与拍照入口 */
+.touch-only { display: none !important; }
+@media (pointer: coarse) {
+  .touch-only { display: inline-flex !important; }
+  .cta-hint { display: none; }
+}
 

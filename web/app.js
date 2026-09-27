@@ -810,6 +810,8 @@
   // ---------- 启动 ----------
   // 上传入口：在请求任何数据之前绑定（没有 API Key、目录还没加载时也要有反应）。
   // “选择文件”是原生 <label for="file">，由浏览器直接打开文件选择器，手机浏览器不会拦截
+  const DOC_ACCEPT = ".pdf,.doc,.docx,.wps,.rtf,.odt,.xls,.xlsx,.et,.ods,.ppt,.pptx,.dps,.odp,.md,.markdown,.txt,"
+    + "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown";
   function initUpload() {
     const drop = $("#drop");
     const take = (f) => {
@@ -818,8 +820,13 @@
       upload(f);
     };
     $("#pick").addEventListener("click", (e) => e.stopPropagation());  // label 自己会打开选择器，不再冒泡到拖放区
+    $("#pick-img").addEventListener("click", (e) => e.stopPropagation());
+    $("#file-img").onchange = (e) => { take(e.target.files[0]); e.target.value = ""; };
+    // 手机、平板：可选类型里有图片时，系统先弹“照片图库 / 拍照”。“选择文件”只收文档，直接进入文件选择器；
+    // 照片与拍照走单独的“照片/图片”按钮
+    if (matchMedia("(pointer: coarse)").matches) $("#file").accept = DOC_ACCEPT;
     $("#pick").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pickFile(); } });
-    drop.onclick = (e) => { if (!e.target.closest("#pick")) pickFile(); };
+    drop.onclick = (e) => { if (!e.target.closest("#pick, #pick-img")) pickFile(); };
     drop.onkeydown = (e) => { if (e.target === drop && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); pickFile(); } };
     $("#file").onchange = (e) => { take(e.target.files[0]); e.target.value = ""; };
     ["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
