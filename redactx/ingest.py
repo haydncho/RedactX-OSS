@@ -164,6 +164,7 @@ def count_pages(path: Path, password: str | None, max_pages: int) -> tuple[str, 
 
 def _group_lines(chars: list[Char]) -> list[Line]:
     """把文字层字符按基线聚成行，行内按 x 排序。"""
+    order = {id(c): i for i, c in enumerate(chars)}  # 文字层里的书写顺序
     chars = sorted(chars, key=lambda c: ((c.box[1] + c.box[3]) / 2, c.box[0]))
     lines: list[list[Char]] = []
     for c in chars:
@@ -179,9 +180,24 @@ def _group_lines(chars: list[Char]) -> list[Line]:
         lines.append([c])
     out = []
     for ln in lines:
-        ln.sort(key=lambda c: c.box[0])
-        out.append(Line(chars=ln, source="text"))
+        out.append(Line(chars=_order_runs(ln, order), source="text"))
     return out
+
+
+def _order_runs(chars: list[Char], order: dict[int, int]) -> list[Char]:
+    """行内排序：文字层里连续书写、自左向右的一串字保持完整，各串按起点的 x 排序。
+    一般的行与逐字按 x 排序结果相同；表格里超出格子被裁掉的文字会压在右边一格的字上
+    （“三级手术”的“手术”压在“王小红”上），逐字按 x 排会交错成“手王术小红”，姓名就认不出来了。"""
+    runs: list[list[Char]] = []
+    for c in sorted(chars, key=lambda c: order[id(c)]):
+        if runs:
+            p = runs[-1][-1]
+            if order[id(c)] == order[id(p)] + 1 and c.box[0] >= p.box[0]:
+                runs[-1].append(c)
+                continue
+        runs.append([c])
+    runs.sort(key=lambda r: r[0].box[0])
+    return [c for r in runs for c in r]
 
 
 def _text_layer(page: pdfium.PdfPage, scale: float, height_pt: float) -> list[Char]:
@@ -265,6 +281,47 @@ def iter_pages(path: Path, kind: str, dpi: int, password: str | None = None) -> 
             for i, fr in enumerate(ImageSequence.Iterator(im)):
                 rgb = np.array(fr.convert("RGB"))
                 yield rgb, PageData(index=i, width=rgb.shape[1], height=rgb.shape[0])
+
+
+def slanted_text(path: Path, dpi: int, password: str | None = None) -> dict[int, list[tuple[str, tuple[float, float, float, float]]]]:
+    """文字层里的斜向文字（多为水印）：按页返回 [(文字, 外接框)]，文字层里连续书写的一串字合成一段。
+    坐标与渲染图像相同（与 _text_layer 一致，只看未旋转的页面）。"""
+    scale = dpi / 72
+    out: dict[int, list] = {}
+    with PDFIUM_LOCK:
+        pdf = pdfium.PdfDocument(str(path), password=password)
+        try:
+            for i in range(len(pdf)):
+                page = pdf[i]
+                if page.get_rotation() != 0:
+                    page.close()
+                    continue
+                h_pt = page.get_size()[1]
+                tp = page.get_textpage()
+                runs: list[list] = []
+                last = -2
+                for k in range(tp.count_chars()):
+                    ch = tp.get_text_range(k, 1)
+                    if not ch or ch.isspace():
+                        continue
+                    deg = math.degrees(pdfium_c.FPDFText_GetCharAngle(tp.raw, k)) % 90
+                    if not 8 < deg < 82:
+                        continue
+                    left, bottom, right, top = tp.get_charbox(k, loose=True)
+                    box = (left * scale, (h_pt - top) * scale, right * scale, (h_pt - bottom) * scale)
+                    if runs and k <= last + 2:  # 同一串（中间最多隔一个空格）
+                        runs[-1].append((ch, box))
+                    else:
+                        runs.append([(ch, box)])
+                    last = k
+                tp.close()
+                page.close()
+                if runs:
+                    out[i] = [("".join(c for c, _ in r), (min(b[0] for _, b in r), min(b[1] for _, b in r),
+                                                          max(b[2] for _, b in r), max(b[3] for _, b in r))) for r in runs]
+        finally:
+            pdf.close()
+    return out
 
 
 def image_bytes_ok(data: bytes) -> bool:

@@ -4,12 +4,15 @@
 - 水印注释：/Annots 里 /Subtype /Watermark 的注释
 - 标记内容：内容流里 /Artifact <</Subtype /Watermark ...>> BDC ... EMC 包住的一段
 - 可选内容（图层）：名称含“水印 / watermark”的 OCG，以 /OC 标记内容或 XObject 的 /OC 挂在页面上
+- 没有任何标记的斜向浅色文字：文字矩阵倾斜（不是横排、竖排），并且半透明或用浅色填充的 BT…ET 文字块。
+  压在照片上的这种水印按像素擦不掉（底色不是纸色），只能在结构层面删
 删掉它们之后再按原流程渲染、识别、打码；其余内容原样保留。
 """
 
 from __future__ import annotations
 
 import logging
+import math
 from pathlib import Path
 
 import pikepdf
@@ -79,6 +82,80 @@ def _section_is_wm(op: str, operands, props_res, wm_ocgs) -> bool:
     return False
 
 
+SLANT_MIN = 10  # 文字矩阵倾斜超过这个角度（度，且离竖排也超过）才可能是水印
+
+
+def _num(v, default: float = 0.0) -> float:
+    try:
+        return float(v)
+    except Exception:
+        return default
+
+
+def _slanted_tm(operands) -> bool:
+    if len(operands) < 2:
+        return False
+    deg = math.degrees(math.atan2(_num(operands[1]), _num(operands[0]))) % 90
+    return SLANT_MIN < deg < 90 - SLANT_MIN
+
+
+def _alpha(res, name) -> float:
+    try:
+        gs = res.ExtGState.get(name)
+        return _num(gs.get("/ca", 1), 1.0) if gs is not None else 1.0
+    except Exception:
+        return 1.0
+
+
+def _faint_fill(op: str, operands) -> bool | None:
+    """填充色是否浅（灰度 ≥ 0.5）；不是填充色设置时返回 None。"""
+    vals = [_num(v) for v in operands]
+    if op == "g" and vals:
+        return vals[0] >= 0.5
+    if op == "rg" and len(vals) == 3:
+        return sum(vals) / 3 >= 0.5
+    if op == "k" and len(vals) == 4:
+        return max(vals) <= 0.5
+    return None
+
+
+TEXT_SHOW = {"Tj", "TJ", "'", '"'}
+
+
+def _slanted_text_ops(ops, res) -> tuple[set[int], int]:
+    """斜向且半透明（或浅色填充）的 BT…ET 文字块里显示文字的操作的下标，以及这样的文字块数。
+    只删显示文字的操作：块里设置的颜色、字体等状态照旧保留，不影响后面的内容。"""
+    drop: set[int] = set()
+    blocks = 0
+    alpha, faint = 1.0, False  # 当前的填充透明度、填充色是否浅；随 q/Q 入栈出栈
+    saved: list[tuple[float, bool]] = []
+    shows: list[int] | None = None  # 当前文字块里显示文字的操作
+    slanted = False
+    for idx, (operands, op) in enumerate(ops):
+        name = str(op)
+        if name == "q":
+            saved.append((alpha, faint))
+        elif name == "Q" and saved:
+            alpha, faint = saved.pop()
+        elif name == "gs" and operands and res is not None:
+            alpha = _alpha(res, operands[0])
+        elif _faint_fill(name, operands) is not None:
+            faint = _faint_fill(name, operands)
+        elif name == "BT":
+            shows, slanted = [], False
+        elif shows is not None:
+            if name == "Tm" and _slanted_tm(operands):
+                slanted = True
+            elif name in TEXT_SHOW:
+                shows.append(idx)
+            elif name == "ET":
+                if slanted and shows and (alpha < 0.9 or faint):
+                    drop.update(shows)
+                    blocks += 1
+                shows = None
+    return drop, blocks
+
+
 def _strip_page(pdf: pikepdf.Pdf, page: pikepdf.Page, wm_ocgs) -> int:
     removed = 0
     # 1. 水印注释
@@ -107,8 +184,12 @@ def _strip_page(pdf: pikepdf.Pdf, page: pikepdf.Page, wm_ocgs) -> int:
     except Exception as e:  # 内容流损坏：不动它
         log.warning("内容流无法解析，跳过水印对象去除：%s", type(e).__name__)
         return removed
-    out, stack, changed = [], [], False
-    for operands, op in ops:
+    drop, blocks = _slanted_text_ops(ops, res)
+    removed += blocks
+    out, stack, changed = [], [], bool(drop)
+    for idx, (operands, op) in enumerate(ops):
+        if idx in drop:
+            continue
         name = str(op)
         inside = bool(stack) and stack[-1]
         if name in ("BDC", "BMC"):

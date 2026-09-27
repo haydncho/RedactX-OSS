@@ -161,12 +161,30 @@ def classify_image(obj: ImageObject, page_w: int, page_h: int, repeated: bool, d
     area_ratio = (w * h) / float(page_w * page_h)
     if area_ratio > 0.3:
         return None
-    small_sig = h < dpi * 1.4 / 2.54 and w / max(h, 1) >= 1.8 and area_ratio < 0.02
+    # 两个字的签名写得紧凑，宽高比常只有 1.5–1.8（实测 68×40 像素）；Logo 多近于方形
+    small_sig = h < dpi * 1.4 / 2.54 and w / max(h, 1) >= 1.4 and area_ratio < 0.02
     if small_sig:
         return "SIGNATURE"
     if repeated:
         return "LOGO"
     return None
+
+
+def photo_regions(img: np.ndarray) -> list[Rect]:
+    """扫描页里夹带的照片（翻拍的证件、内镜图等）：成片的非纸色区域，不超过半页。
+    文字块合拢后也连成一片，但其中真正着墨的像素不到三成；照片在四成以上。
+    手机拍的整页文件底色发灰，会整页连成一片：超过半页的不算（那是页面本身，整页识别已经覆盖）。"""
+    g = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    paper = float(np.percentile(g, 90))
+    ink = (g < paper - 30).astype(np.uint8)
+    block = cv2.morphologyEx(ink, cv2.MORPH_CLOSE, np.ones((41, 41), np.uint8))
+    n, _, st, _ = cv2.connectedComponentsWithStats(block)
+    out = []
+    for i in range(1, n):
+        x, y, w, h, a = (int(v) for v in st[i])
+        if 0.03 * g.size <= w * h <= 0.5 * g.size and a >= 0.6 * w * h and ink[y : y + h, x : x + w].mean() >= 0.4:
+            out.append((float(x), float(y), float(x + w), float(y + h)))
+    return out
 
 
 # ---------- 扫描页上的 Logo：页眉页脚里跨页重复出现的图形 ----------

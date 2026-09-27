@@ -239,3 +239,100 @@ def test_landline_with_ocr_dot_needs_phone_cue():
     assert phones("地址：某路30号电话：0522.3964869") == ["0522.3964869"]
     assert phones("金额 010.12345678元") == []
     assert phones("编码0571 88886666") == []
+
+
+def test_label_chain_field_starts_after_colon():
+    # “受委托人/亲属（或监护人）：”是一个标签：填写区从冒号之后开始，不被紧挨着的“亲属”截断
+    page = PageData(0, 1000, 1000, lines=[_line("受委托人/亲属（或监护人）：")])
+    _, fields = anchor(page, {"PERSON"})
+    assert len(fields) == 1 and fields[0][2] is not None
+    assert fields[0][2][0] >= page.lines[0].chars[-1].box[2]
+
+
+def test_checkbox_option_is_not_a_field():
+    page = PageData(0, 1000, 1000, lines=[_line("主管医师☑主管护士☑")])
+    hits, fields = anchor(page, {"STAFF"})
+    assert hits == [] and fields == []
+
+
+def test_new_labels():
+    page = PageData(0, 1000, 1000, lines=[_line("医保编号：123456789012345"), _line("卡号：6222000011112222333"),
+                                          _line("主诊医师姓名：王小明"), _line("联系人地址：某某市某某区某某路1号")])
+    hits, _ = anchor(page, {"MEDICAL_ID", "BANK_CARD", "STAFF", "ADDRESS"})
+    assert {(h.type, h.value) for h in hits} == {("MEDICAL_ID", "123456789012345"), ("BANK_CARD", "6222000011112222333"),
+                                                 ("STAFF", "王小明"), ("ADDRESS", "某某市某某区某某路1号")}
+
+
+def test_code_after_role_is_not_a_name():
+    # “责任护士代码：N123”里的“代码”不是姓名（否则会作为种子把全文的“疾病代码”都遮掉）
+    page = PageData(0, 1000, 1000, lines=[_line("责任护士代码：N8678381085")])
+    hits, _ = anchor(page, {"STAFF", "MEDICAL_ID"})
+    assert all(h.type != "STAFF" for h in hits)
+
+
+def test_bank_word_before_card_is_not_org():
+    assert not [t for t, _, _ in rules.find("原路退回银行卡") if t == "ORG"]
+
+
+def test_repeated_ner_names_become_seeds():
+    from redactx.detect.engine import collect_seeds
+    from redactx.schemas import Hit
+
+    hits = [Hit("PERSON", "ner", 0, 1, 0, 3, "黄小萍"), Hit("PERSON", "ner", 0, 2, 0, 3, "黄小萍"), Hit("PERSON", "ner", 0, 3, 0, 3, "何其多")]
+    seeds = collect_seeds(hits, [])
+    assert seeds.get("黄小萍") == "PERSON"  # 两处独立认出
+    assert "何其多" not in seeds  # 只认出一次
+
+
+def test_name_before_role_in_ward_round_title():
+    from redactx.detect.anchors import round_names
+
+    page = PageData(0, 1000, 1000, lines=[_line("王志强主治医师查房记录"), _line("2025年09月02日09:00赵立新副主任医师查房记录"),
+                                          _line("主任医师查房记录"), _line("无上级医师查房记录")])
+    assert [(h.line, h.value) for h in round_names(page)] == [(0, "王志强"), (1, "赵立新")]
+
+
+def test_label_inside_longer_plain_word_and_prefixed_role():
+    page = PageData(0, 1000, 1000, lines=[_line("床位费315.00"), _line("医保机构经办人：王小明"), _line("定点医疗机构代码：H12345678901")])
+    hits, fields = anchor(page, {"MEDICAL_ID", "STAFF", "USCC"})
+    assert {(h.type, h.value) for h in hits} == {("STAFF", "王小明"), ("USCC", "H12345678901")}
+    assert all(f[1] != "床位" for f in fields)
+
+
+def test_number_value_stops_at_cjk_and_address_after_generic_label_seeds():
+    page = PageData(0, 1000, 1000, lines=[_line("电话：13912345678某某省某某市"), _line("地址：某某省某某市某某镇长青街8号")])
+    hits, _ = anchor(page, {"PHONE", "ADDRESS"})
+    assert [(h.type, h.value, h.seed) for h in hits] == [("PHONE", "13912345678", True), ("ADDRESS", "某某省某某市某某镇长青街8号", True)]
+
+
+def test_sign_note_in_brackets_is_part_of_label():
+    for text in ("直系亲属/近亲属/委托代理人(摁手印)：", "见证人（签字）："):
+        page = PageData(0, 1000, 1000, lines=[_line(text)])
+        hits, fields = anchor(page, {"PERSON", "SIGNATURE"})
+        assert hits == []  # 括号里的“摁手印”“签字”不是姓名
+        assert len(fields) == 1 and fields[0][2][0] >= page.lines[0].chars[-1].box[2]  # 填写区从冒号之后开始
+
+
+def test_relation_words_in_prose_are_not_fields():
+    page = PageData(0, 1000, 1000, lines=[_ocr_line("如果患者无法签署，可由直系亲属/近亲属/委托代理人(代理律师等)签署。")])
+    hits, fields = anchor(page, {"PERSON", "SIGNATURE"})
+    assert hits == [] and fields == []
+
+
+def test_quality_control_row():
+    # OCR 把“质控护士”读成“质检护士”：“质检”不是质控医师的姓名，后面的“陈晓梅”才是护士姓名
+    text = "病案质量：甲乙丙质控医师质检护士陈晓梅质检日期2023年10月29日"
+    ln = _line(text, gaps={text.index(w): 30 for w in ("质控医师", "质检护士", "陈晓梅", "质检日期")})
+    ln.source = "ocr"
+    page = PageData(0, 1000, 1000, lines=[ln])
+    hits, _ = anchor(page, {"STAFF", "SIGNATURE"})
+    assert [(h.type, h.value) for h in hits] == [("STAFF", "陈晓梅")]
+
+
+def test_ner_name_standing_alone_twice_seeds():
+    from redactx.detect.engine import collect_seeds
+    from redactx.schemas import Hit
+
+    pages = [PageData(0, 1000, 1000, lines=[_line("林小慧"), _line("体温正常"), _line("林小慧")])]
+    seeds = collect_seeds([Hit("PERSON", "ner", 0, 9, 0, 3, "林小慧")], [], pages)
+    assert seeds.get("林小慧") == "PERSON"

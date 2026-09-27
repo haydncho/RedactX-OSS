@@ -17,6 +17,7 @@ _STOP_MAX = max(len(k) for k in STOP_WORDS)
 SEPS = set("：:;；")
 SIGN_SUFFIX = {"签名", "签字", "签章"}
 ROLE_TAILS = {"医生", "医师", "护士"}
+CHECKBOX = set("☑□☐☒■✓√✔")
 SOFT_SEPS = set("：:()（）[]【】 _＿-—")
 PUNCT_PRE = set("：:，,；;。.、()（）[]【】 |｜/")
 NOT_NAME = set(
@@ -25,7 +26,7 @@ NOT_NAME = set(
     高热 高烧 高血 黄疸 白细 查体 常规 严重 全身 平稳 安静 明显 康复 于今 于入 包块 方案 时间 目前
     信息 须知 情况 意见 声明 义务 权利 资料 隐私 费用 协议 安全 管理 服务 保护 规定 制度 要求 注意 事项
     谈话 告知 知情 签署 委托 授权 执行 评估 核对 交接 说明 麻醉 护理 手术 治疗 检查 审核 复核 操作 采样 录入
-    查看 给予 予以 考虑 继续""".split()
+    查看 给予 予以 考虑 继续 陈述 单列 质检 质控 非常 你好 您好 应承 应当 应该 应由 摁手 按手 手印 指印 捺印 盖章""".split()
 )
 RE_CJK_NAME = re.compile(r"[一-龥·•]{2,5}")
 # 少数民族姓名（“阿依古丽·买买提”）与英文姓名（“Li Wei”）
@@ -81,6 +82,17 @@ def find_labels(page: PageData) -> list[LabelHit]:
                 continue
             j = i + len(lab)
             kind = LABELS[lab]
+            if j < len(text) and text[j] in CHECKBOX:
+                i = j  # “主管医师☑”：勾选项，不是填写栏
+                continue
+            tail = _match_at(text, j, LABELS, _LABEL_MAX)
+            if tail and tail not in SIGN_SUFFIX and j + len(tail) < len(text) and text[j + len(tail)] in SEPS:
+                i = j  # “医保机构经办人：”：真正的标签是紧跟着、带冒号的“经办人”
+                continue
+            stop = _match_at(text, i, STOP_WORDS, _STOP_MAX)
+            if stop and len(stop) > len(lab) and stop not in LABELS:
+                i += len(stop)  # “床位费”“电话费”：更长的非敏感词的一部分，不是标签
+                continue
             # “上级医师签名”“主治医师签字”：角色标签后紧跟签名字样，合并成一个签名标签（否则角色标签的填写区在“签名”前就截止了）
             suffix = _match_at(text, j, SIGN_SUFFIX, 2) if lab not in SIGNATURE_LABELS else None
             if suffix:
@@ -89,12 +101,16 @@ def find_labels(page: PageData) -> list[LabelHit]:
             pre_ok = i == 0 or text[i - 1] in PUNCT_PRE or text[i - 1].isdigit() or _gap(line, i - 1, i) > 0.4
             # “谈话医师签名：”“谈话医生：”“经治医师：”：签名或医护标签后面带冒号时，
             # 前面紧挨着别的字（词表里没有的角色词）也算
-            if not pre_ok and ("签" in lab or lab in ROLE_TAILS) and j < len(text) and text[j] in SEPS:
+            if not pre_ok and ("签" in lab or lab in ROLE_TAILS or kind in ("PERSON", "STAFF") and lab not in GENERIC) and j < len(text) and text[j] in SEPS:
                 pre_ok = True
             # 通用词在行尾时没有冒号或间隔可作凭据（多为正文折行，如“……（患者”），只有独占一行才算标签；
             # 签名类标签除外：“……自愿接受治疗。签名 （手写）”里的“签名”正在句末
             at_end = j == len(text) and (lab not in GENERIC or i == 0 or lab in SIGNATURE_LABELS)
-            post_ok = at_end or (j < len(text) and (text[j] in SOFT_SEPS or _gap(line, j - 1, j) > 0.4))
+            chain = _label_chain_end(text, j)  # 与别的标签、括号说明串到冒号为止
+            post_ok = at_end or bool(chain) or (j < len(text) and (text[j] in SOFT_SEPS or _gap(line, j - 1, j) > 0.4))
+            # 正文里的“……委托代理人（代理律师等）签署”：通用词后面的括号不是签署说明，不算标签
+            if post_ok and not chain and lab in GENERIC and j < len(text) and text[j] in "（(":
+                post_ok = False
             # 表单标签位于行首时，手写内容常紧贴标签，被 OCR 识别到同一行
             if not post_ok and i == 0 and lab not in GENERIC and line.source == "ocr":
                 post_ok = True
@@ -103,11 +119,40 @@ def find_labels(page: PageData) -> list[LabelHit]:
             if not post_ok and pre_ok and kind in ("PERSON", "STAFF") and _handwritten_name_after(line, i, j):
                 post_ok = weak = True
             if pre_ok and post_ok:
+                j = chain or j
                 out.append(LabelHit(li, i, j, lab, kind, weak))
                 i = j
             else:
                 i += 1
     return out
+
+
+_CHAIN_JOIN = set("/／、（）()或及和 ")
+
+
+# 标签后面括号里的签署说明：“患者本人签名（摁手印）：”“见证人（签字）：”
+SIGN_NOTES = {"摁手印", "按手印", "捺手印", "摁指印", "按指印", "手印", "指印", "捺印", "签名", "签字", "签章", "盖章", "签名或盖章", "签字或盖章"}
+_SIGN_NOTES_MAX = max(len(w) for w in SIGN_NOTES)
+
+
+def _label_chain_end(text: str, j: int) -> int | None:
+    """“受委托人/亲属（或监护人）：”“委托代理人（摁手印）：”：标签后面用“/”“、”“（或）”接着别的标签
+    或括号里的签署说明、最后是冒号时，整串是一个标签，返回冒号之后的位置；否则返回 None。
+    否则每个标签的填写区都会被紧挨着的下一个标签截断，括号里的“摁手印”还会被当成姓名。"""
+    k, more = j, 0
+    while k < len(text) and k - j <= 24:
+        if text[k] in SEPS:
+            return k + 1 if more else None
+        if text[k] in _CHAIN_JOIN:
+            k += 1
+            continue
+        note = _match_at(text, k, SIGN_NOTES, _SIGN_NOTES_MAX) if text[k - 1] in "（(" else None
+        lab = note or _match_at(text, k, LABELS, _LABEL_MAX)
+        if not lab:
+            return None
+        more += 1
+        k += len(lab)
+    return None
 
 
 def _name_run(text: str, j: int) -> int:
@@ -241,6 +286,20 @@ def table_signatures(page: PageData) -> list[tuple[str, str, Rect, Rect | None]]
     return fields
 
 
+# 病程记录小标题“蔡某某主治医师查房记录”“2025年09月02日 张三主任医师查房记录”：姓名在职称前面
+RE_ROUND_NAME = re.compile(r"(?:^|(?<=[\d:：，,。；;、\s]))([一-龥]{2,4}?)(?=(?:副主任|主任|主治|住院|上级|经治)(?:医师|医生)(?:首次)?查房)")
+
+
+def round_names(page: PageData) -> list[Hit]:
+    hits = []
+    for li, line in enumerate(page.lines):
+        for m in RE_ROUND_NAME.finditer(line.text):
+            v = m.group(1)
+            if surname_start(v) and _valid("STAFF", v):
+                hits.append(Hit("STAFF", "anchor", page.index, li, m.start(1), m.end(1), v, seed=True))
+    return hits
+
+
 def _overlaps(a: Rect, b: Rect) -> bool:
     return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
 
@@ -333,6 +392,9 @@ def _take_value(line: Line, k: int, kind: str) -> tuple[int, int]:
             break
         if kind in ("PHONE", "ID_CARD", "MEDICAL_ID", "BANK_CARD", "PLATE") and not (ch.isalnum() or ch in "-－— _·•"):
             break
+        # 号码到汉字为止（isalnum 对汉字也成立）：文字层表格里号码后面常紧跟别的格子的内容（“13912345678某某省……”）
+        if kind in ("PHONE", "MEDICAL_ID", "BANK_CARD") and "一" <= ch <= "龥":
+            break
         end += 1
     return k, end
 
@@ -405,7 +467,7 @@ def anchor(page: PageData, enabled: set[str]) -> tuple[list[Hit], list[tuple[str
         if _valid(kind, value) and kind in enabled:
             # 通用词（医师、患者、签名……）后的取值证据弱：首字须是常见姓氏才作全文追踪的种子；
             # 明确标签（姓名、主治医师、科主任……）后的照常作种子（手写姓名首字常被 OCR 认错，不能要求姓氏）
-            seed = not lh.weak and (lh.label not in GENERIC or surname_start(value))
+            seed = not lh.weak and (lh.label not in GENERIC or kind not in ("PERSON", "STAFF") or surname_start(value))
             hits.append(Hit(kind, "anchor", page.index, lh.line, k, e, value, seed=seed))
             if is_sig:  # 签名之后到本行下一个字段的笔迹全部遮盖（收笔拖尾、认不出的字）；不用标签下方的备选区
                 fields += [(f[0], f[1], f[2], None) for f in _field_rects(page, line, lh, kind, is_sig, h, limit) if f[2]]

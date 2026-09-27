@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import secrets
 import shutil
 import threading
@@ -25,6 +26,7 @@ from .catalog import ENTITY_BY_CODE, resolve_style
 from .detect import engine, rules
 from .detect import detector
 from .detect.anchors import DATE_SIGN_CUT, looks_printed
+from .detect.lexicon import surname_start
 from .ingest import iter_pages, open_doc
 from .schemas import Hit, PageData, Region
 
@@ -148,6 +150,46 @@ def page_text(work: np.ndarray, pd: PageData, repeated: set[str]) -> None:
     pd.text_source = "ocr"
 
 
+def _photo_text(work: np.ndarray, pd: PageData) -> list:
+    """扫描页里的照片单独再识别一次：整页识别时，照片里对比度低的字（翻拍证件上的号码）常被漏掉。
+    补上整页识别没有的行；返回其中含合格身份证号的照片（翻拍的身份证），整张遮盖——
+    头像、住址、出生日期都在上面，而“住址”等字样常常认不出来，按字段遮不全。"""
+    id_photos = []
+    for rect in vision.photo_regions(work):
+        # 与整页识别一样丢掉斜向的行：照片上没擦掉的水印，按外接矩形打码会盖掉整张照片
+        lines = [ln for ln in ocr.region_ocr(work, rect) if not vision.is_slanted(ln.angle)]
+        for ln in lines:
+            cx, cy = (ln.box[0] + ln.box[2]) / 2, (ln.box[1] + ln.box[3]) / 2
+            if not any(o.box[0] <= cx <= o.box[2] and o.box[1] <= cy <= o.box[3] for o in pd.lines):
+                pd.lines.append(ln)
+        # 证件照上只有几行字；字多的是拍进来的文件，按字段遮
+        if len(lines) <= 20 and any(t == "ID_CARD" for ln in lines for t, _, _ in rules.find(ln.text)):
+            id_photos.append(rect)
+    return id_photos
+
+
+def _removed_slanted(src: Path, cleaned: Path, opts: Options) -> dict[int, list[Region]]:
+    """清理前后文字层里的斜向文字相比，被删掉的那些（斜向浅色水印）按页作为报告里的水印区域。
+    院名水印记为机构，其余记为水印。"""
+    from .ingest import slanted_text
+
+    try:
+        before = slanted_text(src, opts.dpi, opts.password)
+        after = slanted_text(cleaned, opts.dpi, opts.password)
+    except Exception as e:  # 只影响报告里的水印统计
+        log.warning("读取斜向文字失败：%s", type(e).__name__)
+        return {}
+    out: dict[int, list[Region]] = {}
+    for i, runs in before.items():
+        left = [(t, tuple(round(v) for v in b)) for t, b in after.get(i, [])]
+        for text, box in runs:
+            if (text, tuple(round(v) for v in box)) in left:
+                continue
+            kind = "ORG" if any(t == "ORG" for t, _, _ in rules.find(text)) else "WATERMARK"
+            out.setdefault(i, []).append(Region(kind, "watermark", i, box, style="watermark"))
+    return out
+
+
 def _distinct(profiles):
     """合并角度与颜色都相近的水印特征。"""
     out = []
@@ -170,12 +212,20 @@ def _has_printed_labels(pd: PageData, rect) -> bool:
     return False
 
 
+_NAME_LIST = re.compile(r"[一-龥]{2,4}(?:[/、，,\s]+[一-龥]{2,4})*")
+
+
+def _names_only(text: str) -> bool:
+    """整行只是一个或几个姓名（“张明/李晓红”）：写得工整的手写签名 OCR 也认得很有把握，不能当成印刷字。"""
+    return bool(_NAME_LIST.fullmatch(text)) and all(surname_start(t) for t in re.split(r"[/、，,\s]+", text))
+
+
 def _printed_boxes(pd: PageData, rect) -> list:
     """填写区里已识别的打印字：文字层的字（文字层里没有手写），以及从填写区内起头、成句的 OCR 行。
-    标签所在的那一行不算（OCR 常把标签和紧贴的手写姓名识别成一行）。"""
+    标签所在的那一行不算（OCR 常把标签和紧贴的手写姓名识别成一行）；只由姓名组成的 OCR 行是签名，也不算。"""
     out = []
     for ln in pd.lines:
-        if ln.source == "text" or (ln.chars[0].box[0] >= rect[0] and looks_printed(ln.text, ln.chars)):
+        if ln.source == "text" or (ln.chars[0].box[0] >= rect[0] and looks_printed(ln.text, ln.chars) and not _names_only(ln.text)):
             out += [c.box for c in ln.chars]
     return out
 
@@ -325,6 +375,7 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
     enabled = set(opts.entities)
     # PDF 结构里的水印对象（水印注释、标记为水印的内容、水印图层）在渲染前直接删掉，不碰像素
     wm_objects = 0
+    pdf_wm: dict[int, list[Region]] = {}  # 从 PDF 结构里删掉的斜向水印文字：只记入报告，不再打码
     if doc.kind == "pdf" and ({"WATERMARK", "ORG"} & enabled):
         cleaned = out_dir / "wm-clean.pdf"
         try:
@@ -332,6 +383,7 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
         except Exception as e:  # 清理失败不影响脱敏，按原文件继续
             log.warning("PDF 水印对象去除失败，按原文件处理：%s", type(e).__name__)
         if wm_objects:
+            pdf_wm = _removed_slanted(src, cleaned, opts)
             src = cleaned
             doc = open_doc(src, opts.password, settings.max_pages)
     n = doc.page_count
@@ -375,9 +427,12 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
                 vision.erase_watermark_bands(work, ang, color)
         page_wm.append(wms)
         page_text(work, pd, repeated_so_far)
+        id_photos = _photo_text(work, pd) if pd.text_source == "ocr" else []
         hits, fields = engine.page_hits(pd, enabled, opts.custom_words)
         org_names.update(h.value for h in hits if h.type == "ORG" and h.value)
         regions: list[Region] = []
+        if "ID_CARD" in enabled:
+            regions += [Region("ID_CARD", "id-photo", pd.index, r) for r in id_photos]
         for ftype, label, right_rect, below_rect in fields:
             if ftype not in enabled:
                 continue
@@ -422,7 +477,7 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
         if g not in logos and org_rects and vision.beside_name(g.rect, org_rects[g.page]):
             page_regions[g.page].append(Region("LOGO", "beside-org", g.page, g.rect))
     all_hits = [h for hs in page_hits for h in hs]
-    seeds = engine.collect_seeds(all_hits, opts.custom_words)
+    seeds = engine.collect_seeds(all_hits, opts.custom_words, pages)
     seeds = {v: t for v, t in seeds.items() if t in enabled}
     # 正文里认出的人名，若在本文档的明确字段里出现过（如“主治医师：张三”），按字段的类型记
     field_types = {h.value: h.type for h in all_hits if h.source == "anchor" and h.seed and h.type in ("PERSON", "STAFF")}
@@ -470,6 +525,7 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
         # （首遍处理较早的页时还不知道这些水印，条带下面的字可能到这时才露出来）
         painted = [r.rect for r in regions] + [r.rect for r in band_regions]
         regions += [Region("ORG" if wm.org else "WATERMARK", "watermark", i, wm.rect, style="watermark") for wm in page_wm[i]] + band_regions
+        regions += pdf_wm.get(i, [])
         residual = 0
         if opts.verify is True or (opts.verify == "auto" and pd.text_source != "text"):
             verified = True

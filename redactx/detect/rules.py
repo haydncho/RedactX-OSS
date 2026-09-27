@@ -158,6 +158,9 @@ def find(text: str) -> list[tuple[str, int, int]]:
     for a, b, s in _spans(RE_ORG, text):
         cut = _name_start(s, ORG_SUFFIX)
         a, s = a + cut, s[cut:]
+        # “原路退回银行卡”“银行账户”里的“银行”不是机构名
+        if s.endswith("银行") and text[b : b + 1] in ("卡", "账", "帐"):
+            continue
         if free(a, b) and len(s) >= 5:
             add("ORG", a, b)
     return hits

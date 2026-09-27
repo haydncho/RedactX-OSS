@@ -144,3 +144,25 @@ def test_seal_ring_text_is_not_a_watermark():
         img = np.full((600, 900, 3), 250, np.uint8)
         cv2.putText(img, "HOSPITAL", (230, 330), cv2.FONT_HERSHEY_SIMPLEX, 2.2, color, 6)
         assert vision._reddish_strokes(img, vision.light_layer(img), quad) is want, color
+
+
+def test_photo_regions_vs_text_block():
+    img = np.full((1000, 800, 3), 255, np.uint8)
+    img[100:400, 100:500] = 150  # 照片：成片的灰
+    for y in range(600, 900, 30):  # 文字块：一行行细笔画
+        img[y : y + 4, 100:700] = 0
+    rects = vision.photo_regions(img)
+    assert len(rects) == 1 and rects[0][1] < 150 and rects[0][3] < 450
+
+
+def test_compact_signature_image_is_signature():
+    from redactx.schemas import ImageObject
+
+    obj = ImageObject(rect=(100, 100, 168, 140), px_size=(136, 80), digest="x")  # 两个字的签名，宽高比 1.7
+    assert vision.classify_image(obj, 1654, 2339, False, 200) == "SIGNATURE"
+
+
+def test_whole_page_photo_is_not_a_photo_region():
+    img = np.full((1000, 800, 3), 160, np.uint8)  # 手机拍的整页文件：底色发灰，整页连成一片
+    img[:20] = img[-20:] = 255
+    assert vision.photo_regions(img) == []

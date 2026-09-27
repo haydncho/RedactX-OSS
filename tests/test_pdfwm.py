@@ -86,3 +86,24 @@ def test_ordinary_layer_and_plain_pdf_untouched(tmp_path):
     src = _pdf(tmp_path, BODY + WM_BOX)
     assert pdfwm.strip_watermarks(src, tmp_path / "out2.pdf") == 0
     assert np.array(_pixels(src)).min() < 230
+
+
+def test_slanted_faint_text_watermark(tmp_path):
+    # 没有任何标记、只是斜着写的半透明浅色文字（压在照片上时按像素擦不掉）
+    def setup(pdf, page):
+        font = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1, BaseFont=pikepdf.Name.Helvetica))
+        page.obj.Resources = pikepdf.Dictionary(Font=pikepdf.Dictionary(F1=font),
+                                                ExtGState=pikepdf.Dictionary(G1=pikepdf.Dictionary(ca=0.35)))
+
+    wm = b"q 0.6 g /G1 gs BT 0.8660 0.5 -0.5 0.8660 170 190 Tm /F1 60 Tf (MMMM) Tj ET Q\n"
+    src = _pdf(tmp_path, BODY + b"BT 1 0 0 1 20 300 Tm /F1 12 Tf (body) Tj ET\n" + wm, setup)
+    dst = tmp_path / "out.pdf"
+    assert pdfwm.strip_watermarks(src, dst) == 1  # 横排的正文文字不删
+    with pikepdf.open(dst) as out:
+        content = out.pages[0].Contents.read_bytes()
+    assert b"body" in content and b"MMMM" not in content
+    # 报告里的水印区域取自删除前后文字层里斜向文字的差别
+    from redactx.ingest import slanted_text
+
+    assert [t for t, _ in slanted_text(src, 72).get(0, [])] == ["MMMM"]
+    assert slanted_text(dst, 72) == {}
