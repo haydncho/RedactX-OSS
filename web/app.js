@@ -333,6 +333,7 @@
     const total = Object.values(counts).reduce((a, b) => a + b, 0);
     $("#sum-total").textContent = total;
     $("#sum-pages").textContent = report.pages;
+    $("#sum-mini").textContent = `${total} 处`;
     const ul = $("#counts"); ul.replaceChildren();
     const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
     for (const [code, n] of entries) {
@@ -762,6 +763,22 @@
   // 拖动画布时不把松手当成点击（否则会移动对比分隔线）
   const panClick = () => panOn || spaceHeld || dragged;
 
+  // 遮盖统计可收起：电脑上收成窄条、画布变宽；单栏布局下收成一行
+  function initSummaryToggle() {
+    const btn = $("#sum-toggle");
+    const apply = (off) => {
+      $("#summary").classList.toggle("off", off);
+      $(".viewer-wrap").classList.toggle("sum-off", off);
+      $("#sum-body").hidden = off;
+      const label = off ? "展开遮盖统计" : "收起遮盖统计";
+      btn.setAttribute("aria-expanded", String(!off));
+      btn.setAttribute("aria-label", label);
+      if (btn.dataset.tip != null) btn.dataset.tip = label; else btn.title = label;
+    };
+    apply(!!state.sumCollapsed);
+    btn.addEventListener("click", () => { state.sumCollapsed = !state.sumCollapsed; save(); apply(state.sumCollapsed); });
+  }
+
   function initHandle() {
     const stage = $("#stage"), handle = $("#handle"), clip = $("#before-clip");
     let pct = 50, pending = null;
@@ -916,6 +933,7 @@
     bindSeg("#seg-view", "view");
     initHandle();
     initZoom();
+    initSummaryToggle();
     refreshHistory();
 
     $("#custom-words").addEventListener("input", (e) => { state.custom = e.target.value; save(); });

@@ -223,13 +223,19 @@
               <button type="button" id="zoom-fit" class="zfit" aria-label="适应窗口"><svg class="ic" aria-hidden="true"><use href="#i-fit"/></svg>适应</button>
             </div>
           </div>
-          <aside class="summary" aria-label="识别结果">
-            <h3><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg>遮盖统计</h3>
+          <aside class="summary" id="summary" aria-label="识别结果">
+            <div class="sum-head">
+              <h3><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg><span class="sum-title">遮盖统计</span></h3>
+              <span class="sum-mini num" id="sum-mini"></span>
+              <button type="button" class="sum-toggle" id="sum-toggle" aria-expanded="true" aria-controls="sum-body" aria-label="收起遮盖统计" title="收起遮盖统计"><svg class="ic" aria-hidden="true"><use href="#i-chev-right"/></svg></button>
+            </div>
+            <div class="sum-body" id="sum-body">
             <div class="total"><span class="num" id="sum-total">0</span> 处 · <span class="num" id="sum-pages">0</span> 页</div>
             <ul class="counts" id="counts"></ul>
             <h3><svg class="ic" aria-hidden="true"><use href="#i-file"/></svg>本页</h3>
             <ul class="page-items" id="page-items"></ul>
             <p class="hint" id="sum-foot"></p>
+            </div>
           </aside>
         </div>
       </div>
