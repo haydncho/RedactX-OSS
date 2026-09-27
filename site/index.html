@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <title>锐消 RedactX</title>
 <meta name="description" content="病案等文档的本地脱敏服务：全部在本机处理、不联网，自动识别姓名、证件号、电话、手写签名、印章等并打码。Apache-2.0 开源。">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
@@ -37,7 +39,7 @@
     <a href="#how">原理</a>
     <a href="#eval">评估</a>
     <a href="#deploy">部署</a>
-    <a class="demo-link" href="/app" rel="noopener">在线演示</a>
+    <a class="demo-link" href="https://redactx-oss.pages.dev/app" rel="noopener">在线演示</a>
     <a class="gh" href="https://github.com/haydncho/RedactX-OSS" rel="noopener"><svg class="ic" aria-hidden="true"><use href="#i-github"/></svg><span>GitHub</span></a>
     <button type="button" class="theme" id="theme" aria-label="切换主题"><svg class="ic sun" aria-hidden="true"><use href="#i-sun"/></svg><svg class="ic moon" aria-hidden="true"><use href="#i-moon"/></svg></button>
   </nav>
@@ -57,7 +59,7 @@
           <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Apache-2.0 开源</li>
         </ul>
         <div class="cta">
-          <a class="btn primary" href="/app" rel="noopener">打开在线演示<svg class="ic" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+          <a class="btn primary" href="https://redactx-oss.pages.dev/app" rel="noopener">打开在线演示<svg class="ic" aria-hidden="true"><use href="#i-arrow"/></svg></a>
           <a class="btn" href="#deploy">部署到本机</a>
           <a class="btn" href="https://github.com/haydncho/RedactX-OSS/releases/latest" rel="noopener"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>下载最新版本</a>
         </div>

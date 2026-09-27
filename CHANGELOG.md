@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- 介绍站同时发布到 GitHub Pages（`.github/workflows/pages.yml`，`site/` 有改动时自动发布），仓库 Website 与 README 顶部链接指向它；“在线演示”改为指向 Cloudflare 站的 `/app` 跳转；页面内用 `<meta>` 声明内容安全策略（GitHub Pages 不支持 `_headers`）。
 - 介绍站：首屏与导航加“在线演示”入口（`/app`，由 Pages 跳转到本机服务当前的临时隧道地址）并注明演示须知；`deploy/site.sh [地址]` 生成跳转（`site/_redirects` 不入库）并发布。
 - 开发模式：`dev.sh` 在设置了 `REDACTX_API_KEY`、`REDACTX_ALLOW_EXPORT` 时把它们传进容器（例如通过隧道对外演示时须设置 API Key）。
 - 新增：项目介绍站 `site/`（纯静态，发布到 Cloudflare Pages）：产品介绍、识别范围、工作原理、合成评估结果、本机部署与接口示例。不提供在线处理，不收集文件；截图为合成数据的脱敏后视图。`site/_headers` 设置严格的内容安全策略。

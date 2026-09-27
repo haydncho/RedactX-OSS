@@ -2,6 +2,8 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
+**项目介绍页：[haydncho.github.io/RedactX-OSS](https://haydncho.github.io/RedactX-OSS/)**（截图、识别范围、工作原理、评估结果、部署步骤）
+
 病案等文档的本地脱敏服务。上传 PDF 或图片，自动识别患者与医护人员姓名、医院名称、证件号、电话、病案号、手写填写区、签名、印章等内容，按指定样式打码，输出栅格化重建后的 PDF。
 
 - 全部在本机处理，不调用任何外部模型或云端接口。
