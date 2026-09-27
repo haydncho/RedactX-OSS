@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- 界面：填对 API Key 后，右上角按钮显示“已连接”（绿点）；点它可更换 Key 或“退出”（清除本浏览器保存的 Key）。
 - 修复：服务设置了 API Key 而浏览器还没填时，右上角“API Key”按钮点了没反应（启动时请求目录被拒绝，后面的按钮绑定没执行），页面也几乎是空的。现在先绑定按钮；被拒绝时自动弹出填写框，并区分“需要 API Key”与“API Key 不正确”；输入框里按回车即保存。
 - 介绍站同时发布到 GitHub Pages（`.github/workflows/pages.yml`，`site/` 有改动时自动发布），仓库 Website 与 README 顶部链接指向它；“在线演示”改为指向 Cloudflare 站的 `/app` 跳转；页面内用 `<meta>` 声明内容安全策略（GitHub Pages 不支持 `_headers`）。
 - 介绍站：首屏与导航加“在线演示”入口（`/app`，由 Pages 跳转到本机服务当前的临时隧道地址）并注明演示须知；`deploy/site.sh [地址]` 生成跳转（`site/_redirects` 不入库）并发布。

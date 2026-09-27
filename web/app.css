@@ -409,3 +409,10 @@ dialog input { width: 100%; height: 40px; border: 0; box-shadow: 0 0 0 1px var(-
   .chip-local { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* API Key 按钮：已连接状态显示绿点 */
+.key-dot { display: none; width: 7px; height: 7px; border-radius: 50%; background: #29bc9b; box-shadow: 0 0 0 3px color-mix(in srgb, #29bc9b 22%, transparent); }
+#btn-key.connected .key-dot { display: inline-block; }
+#btn-key.connected .ic { display: none; }
+.dlg-actions .key-clear { margin-right: auto; }
+

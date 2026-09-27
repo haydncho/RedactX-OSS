@@ -806,6 +806,12 @@
       }
       return;
     }
+    // 填了 Key 且服务接受：右上角按钮显示“已连接”
+    if (store.get(KEY_KEY, "")) {
+      $("#btn-key").classList.add("connected");
+      $("#btn-key-text").textContent = "已连接";
+      $("#btn-key").title = "已填写 API Key，点击更换或退出";
+    }
     load();
     renderPresets();
     renderEntities();
@@ -876,6 +882,7 @@
     if (dlg.open) return;
     $("#key-hint").textContent = hint || KEY_HINT;
     $("#key-input").value = store.get(KEY_KEY, "");
+    $("#key-clear").hidden = !store.get(KEY_KEY, "");
     dlg.returnValue = "";
     dlg.showModal();
     $("#key-input").focus();
@@ -885,7 +892,10 @@
     $("#btn-key").onclick = () => openKeyDialog();
     // 表单里第一个按钮是“取消”：输入框里按回车时按保存处理
     $("#key-input").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); dlg.close("ok"); } });
-    dlg.addEventListener("close", () => { if (dlg.returnValue === "ok") { store.set(KEY_KEY, $("#key-input").value.trim()); location.reload(); } });
+    dlg.addEventListener("close", () => {
+      if (dlg.returnValue === "ok") { store.set(KEY_KEY, $("#key-input").value.trim()); location.reload(); }
+      if (dlg.returnValue === "clear") { store.set(KEY_KEY, ""); location.reload(); }  // 退出：清除本浏览器保存的 Key
+    });
   }
 
   init();
