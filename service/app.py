@@ -117,16 +117,30 @@ async def save_upload(file: UploadFile) -> tuple[Path, str]:
     return typed, EXT[kind]
 
 
+@app.middleware("http")
+async def reject_oversized(request, call_next):
+    """上传接口在读请求体之前按 Content-Length 拒绝超限请求，免得先把整个文件写到磁盘；
+    没有 Content-Length（分块上传）时由 save_upload 边读边数。留 1 MB 给表单其他字段。"""
+    if request.method == "POST" and request.url.path in ("/v1/jobs", "/v1/redact"):
+        try:
+            n = int(request.headers.get("content-length", "0"))
+        except ValueError:
+            n = 0
+        if n > (settings.max_upload_mb + 1) * 1024 * 1024:
+            return JSONResponse(status_code=413, content={"error": {"code": "TOO_LARGE", "message": f"文件超过 {settings.max_upload_mb} MB"}})
+    return await call_next(request)
+
+
 @app.exception_handler(HTTPException)
 async def http_error(_, exc: HTTPException):
     detail = exc.detail if isinstance(exc.detail, dict) else {"code": "ERROR", "message": str(exc.detail)}
     return JSONResponse(status_code=exc.status_code, content={"error": detail})
 
 
-@app.get("/v1/health", tags=["系统"], summary="服务状态", description="返回版本号、是否找到打码标签字体、默认渲染分辨率。不需要 API Key。")
+@app.get("/v1/health", tags=["系统"], summary="服务状态", description="返回版本号、是否找到打码标签字体、默认渲染分辨率、单个文件上传上限（max_upload_mb）。不需要 API Key。")
 def health():
     return {"status": "ok", "version": __version__, "font": bool(settings.font_path), "dpi": settings.render_dpi,
-            "export": settings.allow_export and bool(settings.api_key)}
+            "export": settings.allow_export and bool(settings.api_key), "max_upload_mb": settings.max_upload_mb}
 
 
 @app.get("/v1/catalog", tags=["目录"], summary="完整目录", description="实体分组、实体类型、打码样式与场景预设。Web 页据此生成设置面板。", dependencies=[Depends(auth)])

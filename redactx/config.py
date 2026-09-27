@@ -34,7 +34,7 @@ class Settings:
     retention_hours: float = float(os.environ.get("REDACTX_RETENTION_HOURS", "24"))
     workers: int = int(os.environ.get("REDACTX_WORKERS", "1"))
     api_key: str | None = os.environ.get("REDACTX_API_KEY") or None
-    max_upload_mb: int = int(os.environ.get("REDACTX_MAX_UPLOAD_MB", "200"))
+    max_upload_mb: int = int(os.environ.get("REDACTX_MAX_UPLOAD_MB", "30"))
     max_pages: int = int(os.environ.get("REDACTX_MAX_PAGES", "500"))
     sync_max_pages: int = 10
     sync_max_mb: int = 20

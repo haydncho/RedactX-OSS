@@ -101,7 +101,7 @@ Python 代码改动后服务自动重启（正在处理的任务会中断），W
 | `REDACTX_DPI` | `200` | 默认渲染分辨率 |
 | `REDACTX_RETENTION_HOURS` | `24` | 结果默认保留时长 |
 | `REDACTX_WORKERS` | `1` | 并行任务数（16 GB 内存建议 1） |
-| `REDACTX_MAX_UPLOAD_MB` | `200` | 上传上限 |
+| `REDACTX_MAX_UPLOAD_MB` | `30` | 单个文件上传上限（MB） |
 | `REDACTX_API_KEY` | 无 | 设置后启用 API Key 校验 |
 
 ## 目录

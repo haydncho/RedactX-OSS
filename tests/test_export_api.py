@@ -52,3 +52,18 @@ def test_export_writes_audit_and_cleans_up(client, monkeypatch):
     assert not list(out.glob("export-*.zip"))  # 发送后删除
     entry = json.loads((root / "export-audit.log").read_text(encoding="utf-8").strip().splitlines()[-1])
     assert entry["job_id"] == job_id and entry["pages"] == 1 and entry["boxes"] == 1
+
+
+def test_upload_rejected_by_content_length_before_reading(client, monkeypatch):
+    c, _, _, tmp = client
+    monkeypatch.setattr(app_mod.settings, "api_key", None)
+    monkeypatch.setattr(app_mod.settings, "max_upload_mb", 1)
+    big = b"%PDF-1.4\n" + b"0" * (3 * 1024 * 1024)
+    r = c.post("/v1/jobs", files={"file": ("a.pdf", big, "application/pdf")})
+    assert r.status_code == 413 and r.json()["error"]["code"] == "TOO_LARGE"
+    assert not list(tmp.glob("*.upload"))  # 没有先落盘
+
+
+def test_health_reports_upload_limit(client):
+    c, _, _, _ = client
+    assert c.get("/v1/health").json()["max_upload_mb"] == app_mod.settings.max_upload_mb

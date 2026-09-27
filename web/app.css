@@ -217,7 +217,7 @@ textarea:focus, input[type=password]:focus, select:focus { outline: none; box-sh
 .btn.danger:hover { background: var(--error-soft); box-shadow: 0 0 0 1px color-mix(in srgb, var(--error) 30%, transparent); }
 
 /* 上传区：全页唯一使用多色渐变的地方 */
-.workspace { min-width: 0; display: grid; gap: 16px; }
+.workspace { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }  /* 列宽不被长文件名等不折行内容撑开 */
 .dropzone { position: relative; overflow: hidden; background: var(--canvas); border-radius: 12px; box-shadow: var(--e4); min-height: 380px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 260px); align-items: center; gap: 40px; padding: 56px; cursor: pointer; isolation: isolate; transition: box-shadow .2s; }
 .dropzone::after { content: ""; position: absolute; inset: 10px; border-radius: 8px; border: 1px dashed transparent; transition: border-color .2s; pointer-events: none; }
 .dropzone:hover::after, .dropzone.over::after { border-color: var(--hairline-strong); }
@@ -266,6 +266,12 @@ textarea:focus, input[type=password]:focus, select:focus { outline: none; box-sh
 .job { background: var(--canvas); border-radius: 12px; padding: 20px 24px 24px; box-shadow: var(--e4); }
 .job-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
 .job-title { display: flex; gap: 12px; align-items: center; min-width: 0; }
+/* 文件名再长也不撑开面板：信息列可收缩，文件名、说明单行省略（悬停看全文） */
+.job-info { flex: 1 1 auto; min-width: 0; }
+.file-kind { flex: none; }
+.progress-text { gap: 12px; }
+.progress-text #progress-msg { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.progress-text #progress-pct { flex: none; }
 .file-kind { font: 500 11px/1 var(--mono); background: var(--canvas-soft-2); color: var(--body); box-shadow: var(--ring); border-radius: 6px; padding: 10px 8px; letter-spacing: .04em; }
 .job-name { font-weight: 600; font-size: 16px; letter-spacing: -0.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46ch; }
 .job-meta { font-size: 13px; color: var(--mute); }
@@ -600,7 +606,8 @@ dialog.bottom-sheet h3 { margin: 4px 4px 12px; font-size: 15px; }
 
 /* 手机：任务操作两行两列铺满；查看方式单独一行，显示遮盖框与翻页在下一行左右两侧 */
 @media (max-width: 640px) {
-  .job-head { flex-direction: column; align-items: stretch; }
+  .job-head { flex-direction: column; align-items: stretch; flex-wrap: nowrap; }
+  .job-name { max-width: 100%; }
   .job-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; }
   .job-actions .btn { width: 100%; height: 40px; font-size: 14px; justify-content: center; }
   .job-actions .btn .ic { width: 16px; height: 16px; }

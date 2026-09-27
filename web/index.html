@@ -146,7 +146,7 @@
       <div class="drop-text">
         <span class="eyebrow">DROP · UPLOAD · REDACT</span>
         <h1>把文档拖到这里。</h1>
-        <p>支持 PDF 与图片（JPG、PNG、TIFF），Word（doc、docx）、WPS、RTF、ODT、Excel、PPT、Markdown 和纯文本。扫描件、系统导出件、混合 PDF 都可以。</p>
+        <p>支持 PDF 与图片（JPG、PNG、TIFF），Word（doc、docx）、WPS、RTF、ODT、Excel、PPT、Markdown 和纯文本。扫描件、系统导出件、混合 PDF 都可以。单个文件不超过 <span id="max-mb" class="num">30</span> MB。</p>
         <div class="cta-row"><label for="file" id="pick" class="btn primary lg" role="button" tabindex="0"><svg class="ic" aria-hidden="true"><use href="#i-upload"/></svg>选择文件</label><button type="button" id="pick-img" class="btn lg touch-only" aria-haspopup="dialog"><svg class="ic" aria-hidden="true"><use href="#i-camera"/></svg>照片/图片</button><span class="cta-hint">或直接拖入，也可以拖到页面任意位置</span></div>
         <div class="formats" aria-hidden="true"><span>PDF</span><span>JPG</span><span>PNG</span><span>TIFF</span><span>DOC</span><span>DOCX</span><span>WPS</span><span>RTF</span><span>XLSX</span><span>PPTX</span><span>MD</span><span>TXT</span></div>
         <p class="drop-note">文件只在本机处理。服务端不保存原文件名（常含患者姓名），最近任务里的文件名只记在本浏览器里。Word、WPS 等文档先在本机转成 PDF 再脱敏，输出为 PDF。上传的原文件处理完立即删除；供“对比”查看的原件预览图（缩小版）与脱敏结果一起保留，按“结果保留”时长自动清除。勾选“保留原件以便复核”时另存打码前的全尺寸页面，复核完成或到期后删除。</p>
@@ -157,7 +157,7 @@
       <div class="job-head">
         <div class="job-title">
           <span class="file-kind" id="job-kind">PDF</span>
-          <div>
+          <div class="job-info">
             <div class="job-name" id="job-name">—</div>
             <div class="job-meta" id="job-meta">—</div>
           </div>

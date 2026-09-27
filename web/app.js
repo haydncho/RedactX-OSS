@@ -64,6 +64,7 @@
   let typeFilter = null;
   const blobCache = new Map();
   let rev = 0;             // 复核保存后递增，让预览图重新加载
+  let maxUploadMB = 30;    // 单个文件上传上限，启动时以 /v1/health 返回的为准
 
   // ---------- 接口 ----------
   function headers() {
@@ -226,6 +227,8 @@
 
   function upload(file) {
     if (!state.entities.size && !$("#custom-words").value.trim()) { toast("请至少选择一类脱敏字段"); return; }
+    // 先在本地检查大小，超限不上传（服务端同样会拒绝）
+    if (file.size > maxUploadMB * 1024 * 1024) { toast(`文件 ${(file.size / 1048576).toFixed(1)} MB，超过单个文件 ${maxUploadMB} MB 的上限`); return; }
     const kind = (file.name.split(".").pop() || "").toUpperCase().slice(0, 4);
     job = { id: null, name: file.name, kind, pages: 0 };
     report = null; page = 1; blobCache.clear();
@@ -258,6 +261,7 @@
     $("#drop").hidden = true;
     $("#job").hidden = false;
     $("#job-name").textContent = job.name || job.id;
+    $("#job-name").title = job.name || job.id;  // 省略时悬停看全文
     $("#job-kind").textContent = job.kind || "PDF";
     $("#job-meta").textContent = job.pages ? `${job.pages} 页` : "—";
     $("#job-error").hidden = true;
@@ -898,7 +902,10 @@
     initUpload();
     UI.makeSelect($("#opt-retention"));
     // 标题后显示服务版本（/v1/health 不需要 API Key）
-    fetch("/v1/health").then((r) => r.json()).then((h) => { const v = $("#brand-ver"); v.textContent = `v${h.version}`; v.hidden = false; exportEnabled = !!h.export; }).catch(() => {});
+    fetch("/v1/health").then((r) => r.json()).then((h) => {
+      const v = $("#brand-ver"); v.textContent = `v${h.version}`; v.hidden = false; exportEnabled = !!h.export;
+      if (h.max_upload_mb) { maxUploadMB = h.max_upload_mb; $("#max-mb").textContent = maxUploadMB; }
+    }).catch(() => {});
     try {
       catalog = await (await api("/v1/catalog")).json();
     } catch (e) {
