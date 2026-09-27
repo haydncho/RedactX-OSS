@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   error_code TEXT,
   error TEXT,
   options TEXT,
-  summary TEXT
+  summary TEXT,
+  owner TEXT
 )
 """
 
@@ -57,6 +58,9 @@ class JobStore:
         self._review_lock = threading.Lock()
         with self._conn() as c:
             c.execute(_SCHEMA)
+            # 旧库没有 owner 列：补上（旧任务无归属，只有管理员可见）
+            if "owner" not in {r[1] for r in c.execute("PRAGMA table_info(jobs)")}:
+                c.execute("ALTER TABLE jobs ADD COLUMN owner TEXT")
             # 服务重启时，未完成的任务标记为失败
             c.execute("UPDATE jobs SET status='failed', error_code='INTERRUPTED', error='服务重启，任务中断，请重新提交' WHERE status IN ('queued','running')")
         self.pool = ThreadPoolExecutor(max_workers=max(1, settings.workers), thread_name_prefix="redact")
@@ -74,7 +78,8 @@ class JobStore:
             raise ValueError("非法的任务 ID")
         return self.root / "jobs" / job_id
 
-    def create(self, src_bytes_path: Path, ext: str, opts: Options, retention_hours: float, pages: int | None = None) -> str:
+    def create(self, src_bytes_path: Path, ext: str, opts: Options, retention_hours: float, pages: int | None = None,
+               owner: str | None = None) -> str:
         job_id = "job_" + uuid.uuid4().hex[:20]
         d = self.dir(job_id)
         (d / "in").mkdir(parents=True)
@@ -87,8 +92,8 @@ class JobStore:
         opt_json = json.dumps(saved, ensure_ascii=False)
         with self._lock, self._conn() as c:
             c.execute(
-                "INSERT INTO jobs (id,status,created,updated,expires,input_ext,pages,progress,message,options) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                (job_id, "queued", now, now, now + retention_hours * 3600, ext, pages, 0, "排队中", opt_json),
+                "INSERT INTO jobs (id,status,created,updated,expires,input_ext,pages,progress,message,options,owner) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (job_id, "queued", now, now, now + retention_hours * 3600, ext, pages, 0, "排队中", opt_json, owner),
             )
         self.pool.submit(self._execute, job_id, dst, opts)
         return job_id
@@ -153,9 +158,14 @@ class JobStore:
         d["options"] = json.loads(d["options"]) if d["options"] else None
         return d
 
-    def list(self, limit: int = 30) -> list[dict]:
+    def list(self, limit: int = 30, owner: str | None = None) -> list[dict]:
+        """owner 为 None 时列出全部（管理员），否则只列该 Key 提交的任务。"""
+        cols = "id,status,created,pages,progress,message,summary,input_ext"
         with self._conn() as c:
-            rows = c.execute("SELECT id,status,created,pages,progress,message,summary,input_ext FROM jobs ORDER BY created DESC LIMIT ?", (limit,)).fetchall()
+            if owner is None:
+                rows = c.execute(f"SELECT {cols} FROM jobs ORDER BY created DESC LIMIT ?", (limit,)).fetchall()
+            else:
+                rows = c.execute(f"SELECT {cols} FROM jobs WHERE owner=? ORDER BY created DESC LIMIT ?", (owner, limit)).fetchall()
         out = []
         for r in rows:
             d = dict(r)
@@ -170,6 +180,11 @@ class JobStore:
             n = c.execute("DELETE FROM jobs WHERE id=?", (job_id,)).rowcount
         shutil.rmtree(self.dir(job_id), ignore_errors=True)
         return n > 0
+
+    def ids(self, owner: str | None = None) -> list[str]:
+        with self._conn() as c:
+            q = c.execute("SELECT id FROM jobs") if owner is None else c.execute("SELECT id FROM jobs WHERE owner=?", (owner,))
+            return [r[0] for r in q]
 
     def _janitor(self) -> None:
         while True:

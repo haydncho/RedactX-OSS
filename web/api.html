@@ -52,6 +52,7 @@
     <section class="api-card" id="sec-auth">
       <h2><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg>认证</h2>
       <p>服务端设置了环境变量 <code>REDACTX_API_KEY</code> 时，除 <code>/v1/health</code> 外的所有接口都要带请求头 <code>X-API-Key</code>，否则返回 401。未设置时无需认证。服务默认只绑定本机回环地址。</p>
+      <p>任务按 Key 隔离：<code>REDACTX_API_KEY</code> 是管理员 Key，可访问全部任务；管理员用后台脚本为每位使用者生成的用户 Key，只能访问自己提交的任务，访问别人的任务返回 404。同一来源 10 分钟内输错 Key 20 次后暂时返回 429。</p>
     </section>
 
     <section class="api-card" id="sec-errors">
@@ -62,7 +63,8 @@
         <thead><tr><th>状态码</th><th>code</th><th>含义</th></tr></thead>
         <tbody>
           <tr><td>400</td><td><code>INVALID_FILE</code> <code>INVALID_OPTIONS</code> <code>CONVERT_FAILED</code> 等</td><td>文件无法识别、选项不合法、文档转换失败、加密 PDF 密码错误</td></tr>
-          <tr><td>401</td><td><code>BAD_API_KEY</code></td><td>API Key 缺失或不正确</td></tr>
+          <tr><td>401</td><td><code>BAD_API_KEY</code></td><td>API Key 缺失、不正确或已吊销</td></tr>
+          <tr><td>429</td><td><code>TOO_MANY_ATTEMPTS</code></td><td>同一来源 Key 错误次数过多，10 分钟后再试</td></tr>
           <tr><td>404</td><td><code>NOT_FOUND</code></td><td>任务、报告或预览不存在（可能已到期删除）</td></tr>
           <tr><td>409</td><td><code>NOT_READY</code> <code>BUSY</code></td><td>任务尚未完成；或正在处理，暂不能删除</td></tr>
           <tr><td>413</td><td><code>TOO_LARGE</code></td><td>超出上传大小（默认单个文件 30 MB）、页数上限，或同步接口的 10 页 / 20 MB 限制</td></tr>

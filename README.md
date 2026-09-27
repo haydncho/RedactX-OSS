@@ -93,6 +93,17 @@ Python 代码改动后服务自动重启（正在处理的任务会中断），W
 
 设置环境变量 `REDACTX_API_KEY` 后，所有 `/v1` 接口需要请求头 `X-API-Key`。
 
+**按 Key 隔离任务**：`REDACTX_API_KEY` 是管理员 Key，能看到、操作全部任务。给每位使用者单独生成用户 Key，每个 Key 只能看到、操作自己提交的任务，访问别人的任务一律返回 404；标注导出只有管理员 Key 可用。用户 Key 由后台脚本生成，库里只存哈希，明文只显示一次，生成时保证不与库里已有的（含已吊销的）和管理员 Key 重复：
+
+```bash
+deploy/keys.sh keys create "演示-张医生"      # 容器部署；本机直接运行用 python -m service.admin，参数相同
+deploy/keys.sh keys list                      # 名称、前缀、创建与最近使用时间、任务数
+deploy/keys.sh keys revoke key_xxxxxxxxxxxx   # 立即失效；加 --purge 同时删除它提交的任务
+deploy/keys.sh jobs clear --yes               # 清空全部任务
+```
+
+同一来源 10 分钟内输错 Key 20 次后暂时拒绝（429）。既没设管理员 Key、也没生成用户 Key 时为本机模式，不需要 Key。
+
 ## 配置
 
 | 变量 | 默认 | 说明 |
@@ -102,7 +113,7 @@ Python 代码改动后服务自动重启（正在处理的任务会中断），W
 | `REDACTX_RETENTION_HOURS` | `24` | 结果默认保留时长 |
 | `REDACTX_WORKERS` | `1` | 并行任务数（16 GB 内存建议 1） |
 | `REDACTX_MAX_UPLOAD_MB` | `30` | 单个文件上传上限（MB） |
-| `REDACTX_API_KEY` | 无 | 设置后启用 API Key 校验 |
+| `REDACTX_API_KEY` | 无 | 管理员 Key，设置后启用 API Key 校验；用户 Key 用 `deploy/keys.sh` 生成 |
 
 ## 目录
 

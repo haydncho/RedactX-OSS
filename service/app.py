@@ -14,7 +14,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, Path as PathParam, Query, UploadFile
+from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, Path as PathParam, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.background import BackgroundTask
@@ -28,6 +28,7 @@ from redactx.ingest import InputError, count_pages, sniff
 from redactx.pipeline import Options, run
 
 from .jobs import JobStore
+from .keys import ADMIN, KeyStore, Principal
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("redactx.api")
@@ -46,6 +47,7 @@ TAGS = [
 app = FastAPI(title="锐消 RedactX", version=__version__, description="病案等文档的本地脱敏服务。全部在本机处理，不调用外部模型。",
               openapi_tags=TAGS, docs_url=None, redoc_url=None)
 store = JobStore(settings.data_dir)
+keys = KeyStore(store.db_path)
 if settings.allow_export and not settings.api_key:
     log.warning("已设置 REDACTX_ALLOW_EXPORT=1 但没有设置 REDACTX_API_KEY：导出接口不可用。导出含真实病案内容，须同时设置 API Key")
 
@@ -54,9 +56,44 @@ def error(status: int, code: str, message: str):
     raise HTTPException(status_code=status, detail={"code": code, "message": message})
 
 
-def auth(x_api_key: str | None = Header(default=None, description="服务端设置了 REDACTX_API_KEY 时必填")):
-    if settings.api_key and not hmac.compare_digest((x_api_key or "").encode(), settings.api_key.encode()):
-        error(401, "BAD_API_KEY", "API Key 无效")
+# Key 连续输错的来源暂时拒绝：10 分钟内错 20 次。经 Cloudflare 隧道访问时按 CF-Connecting-IP 计
+_FAIL_WINDOW, _FAIL_MAX = 600.0, 20
+_fails: dict[str, list[float]] = {}
+
+
+def _client_ip(request: Request) -> str:
+    return request.headers.get("cf-connecting-ip") or (request.client.host if request.client else "?")
+
+
+def auth(request: Request, x_api_key: str | None = Header(default=None, description="服务端设置了 REDACTX_API_KEY 或已生成用户 Key 时必填")) -> Principal:
+    """返回调用者。管理员 Key 看全部任务；用户 Key 只看自己提交的任务。
+    既没设管理员 Key、也没有生成过用户 Key 时是本机模式，不需要 Key。"""
+    if not settings.api_key and not keys.active_count():
+        return ADMIN
+    ip = _client_ip(request)
+    now = time.time()
+    recent = [t for t in _fails.get(ip, []) if now - t < _FAIL_WINDOW]
+    if len(recent) >= _FAIL_MAX:
+        error(429, "TOO_MANY_ATTEMPTS", "API Key 错误次数过多，请 10 分钟后再试")
+    key = x_api_key or ""
+    if settings.api_key and hmac.compare_digest(key.encode(), settings.api_key.encode()):
+        return ADMIN
+    who = keys.verify(key)
+    if who:
+        return who
+    recent.append(now)
+    _fails[ip] = recent
+    if len(_fails) > 10000:  # 防止记录无限增长
+        _fails.clear()
+    error(401, "BAD_API_KEY", "API Key 无效")
+
+
+def owned(job_id: str, who: Principal) -> dict:
+    """取任务并检查归属：不是自己的任务一律按不存在处理（不透露任务是否存在）。"""
+    job = store.get(job_id)
+    if not job or not (who.admin or job.get("owner") == who.id):
+        error(404, "NOT_FOUND", "任务不存在或已过期删除")
+    return job
 
 
 def parse_options(raw: str | None, password: str | None) -> Options:
@@ -198,8 +235,9 @@ def styles():
 
 @app.post("/v1/jobs", status_code=202, tags=["任务"], summary="提交异步任务",
           description="上传文件，立即返回 job_id，后台排队处理。用 GET /v1/jobs/{job_id} 轮询，status 为 succeeded 后下载结果。上传的原文件处理完立即删除；原件预览图（GET /v1/jobs/{job_id}/preview/{page}?v=before，宽度不超过 1400 像素）与结果一起保留到期；options.keep_source 为 true 时另存打码前的页面供复核删框、改框，复核完成或到期时删除。",
-          dependencies=[Depends(auth)])
+          )
 async def create_job(
+    who: Principal = Depends(auth),
     file: UploadFile = File(..., description="PDF、图片或 Word/WPS/Excel/PPT/Markdown/TXT 等文档，按文件头识别真实类型"),
     options: str | None = Form(None, description="脱敏选项，JSON 字符串；不传时用病案审核默认值。字段见接口文档页"),
     password: str | None = Form(None, description="加密 PDF 的打开密码"),
@@ -209,30 +247,27 @@ async def create_job(
     tmp, ext = await save_upload(file)
     pages = await check_pages(tmp, opts.password)
     hours = settings.retention_hours if retention_hours is None else max(0.1, min(float(retention_hours), 24 * 7))
-    job_id = store.create(tmp, ext, opts, hours, pages or None)
+    job_id = store.create(tmp, ext, opts, hours, pages or None, owner=who.id)
     return {"job_id": job_id, "pages": pages or None, "status": "queued"}
 
 
-@app.get("/v1/jobs", tags=["任务"], summary="最近任务", description="按提交时间倒序。不含原文件名。", dependencies=[Depends(auth)])
-def list_jobs(limit: int = Query(30, description="返回条数，1–100")):
-    return store.list(min(max(limit, 1), 100))
+@app.get("/v1/jobs", tags=["任务"], summary="最近任务", description="按提交时间倒序，只列当前 API Key 提交的任务（管理员 Key 列出全部）。不含原文件名。")
+def list_jobs(limit: int = Query(30, description="返回条数，1–100"), who: Principal = Depends(auth)):
+    return store.list(min(max(limit, 1), 100), owner=None if who.admin else who.id)
 
 
 @app.get("/v1/jobs/{job_id}", tags=["任务"], summary="任务状态",
-         description="status 依次为 queued、running、succeeded 或 failed；progress 为 0–1；完成后 summary 含各类型遮盖数量。", dependencies=[Depends(auth)])
-def get_job(job_id: str = PathParam(..., description="提交任务时返回的 job_id")):
-    job = store.get(job_id)
-    if not job:
-        error(404, "NOT_FOUND", "任务不存在或已过期删除")
+         description="status 依次为 queued、running、succeeded 或 failed；progress 为 0–1；完成后 summary 含各类型遮盖数量。")
+def get_job(job_id: str = PathParam(..., description="提交任务时返回的 job_id"), who: Principal = Depends(auth)):
+    job = owned(job_id, who)
+    job.pop("owner", None)
     return job
 
 
 @app.get("/v1/jobs/{job_id}/result", tags=["任务"], summary="下载脱敏文件",
-         description="PDF 或多页输入输出栅格化重建的 PDF（已清除元数据）；单张图片输出同格式图片。任务未完成返回 409。", dependencies=[Depends(auth)])
-def get_result(job_id: str = PathParam(..., description="任务 ID")):
-    job = store.get(job_id)
-    if not job:
-        error(404, "NOT_FOUND", "任务不存在或已过期删除")
+         description="PDF 或多页输入输出栅格化重建的 PDF（已清除元数据）；单张图片输出同格式图片。任务未完成返回 409。")
+def get_result(job_id: str = PathParam(..., description="任务 ID"), who: Principal = Depends(auth)):
+    job = owned(job_id, who)
     if job["status"] != "succeeded":
         error(409, "NOT_READY", "任务尚未完成")
     out = store.dir(job_id) / "out" / job["summary"]["output"]
@@ -241,17 +276,19 @@ def get_result(job_id: str = PathParam(..., description="任务 ID")):
 
 
 @app.get("/v1/jobs/{job_id}/report", tags=["任务"], summary="打码报告",
-         description="每处遮盖的页码、类型、来源、样式与归一化坐标 box=[x0,y0,x1,y1]（左上角为原点）。不含任何原文。", dependencies=[Depends(auth)])
-def get_report(job_id: str = PathParam(..., description="任务 ID")):
+         description="每处遮盖的页码、类型、来源、样式与归一化坐标 box=[x0,y0,x1,y1]（左上角为原点）。不含任何原文。")
+def get_report(job_id: str = PathParam(..., description="任务 ID"), who: Principal = Depends(auth)):
+    owned(job_id, who)
     p = store.dir(job_id) / "out" / "report.json"
     if not p.exists():
         error(404, "NOT_FOUND", "报告不存在")
     return JSONResponse(json.loads(p.read_text(encoding="utf-8")), headers={"Cache-Control": "no-store"})
 
 
-@app.get("/v1/jobs/{job_id}/preview/{page}", tags=["任务"], summary="页面预览图", description="JPEG，宽度不超过 1400 像素。v=before 为原件缩小版，含未脱敏内容，与结果一起保留到期或随任务删除。", dependencies=[Depends(auth)])
+@app.get("/v1/jobs/{job_id}/preview/{page}", tags=["任务"], summary="页面预览图", description="JPEG，宽度不超过 1400 像素。v=before 为原件缩小版，含未脱敏内容，与结果一起保留到期或随任务删除。")
 def get_preview(job_id: str = PathParam(..., description="任务 ID"), page: int = PathParam(..., description="页码，从 1 开始"),
-                v: str = Query("after", description="after 脱敏后，before 原件")):
+                v: str = Query("after", description="after 脱敏后，before 原件"), who: Principal = Depends(auth)):
+    owned(job_id, who)
     if v not in ("before", "after"):
         error(400, "INVALID", "v 只能是 before 或 after")
     p = store.dir(job_id) / "out" / "preview" / f"{v}-{page}.jpg"
@@ -260,10 +297,8 @@ def get_preview(job_id: str = PathParam(..., description="任务 ID"), page: int
     return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
 
-def _review_job(job_id: str) -> dict:
-    job = store.get(job_id)
-    if not job:
-        error(404, "NOT_FOUND", "任务不存在或已过期删除")
+def _review_job(job_id: str, who: Principal) -> dict:
+    job = owned(job_id, who)
     if job["status"] != "succeeded":
         error(409, "NOT_READY", "任务尚未完成")
     if not (store.dir(job_id) / "out" / "layout.json").exists():
@@ -275,9 +310,10 @@ def _review_job(job_id: str) -> dict:
          description="body 为 {\"items\": [...]}：本任务全部遮盖框（格式同打码报告的 items；新框只需 page、type、box，style 可省略）。"
                      "服务按改动重新打码受影响的页并重建输出，返回新的报告。提交时 options.keep_source 为 true 的任务可以加框、删框、改框；"
                      "其余任务只能加框，删框或改框返回 409 NOT_EDITABLE。",
-         dependencies=[Depends(auth)])
-async def put_review(job_id: str = PathParam(..., description="任务 ID"), body: dict = Body(..., description='{"items": [...]}')):
-    _review_job(job_id)
+         )
+async def put_review(job_id: str = PathParam(..., description="任务 ID"), body: dict = Body(..., description='{"items": [...]}'),
+                     who: Principal = Depends(auth)):
+    _review_job(job_id, who)
     try:
         return await run_in_threadpool(store.review, job_id, review.apply, body.get("items"))
     except review.ReviewError as e:
@@ -286,13 +322,15 @@ async def put_review(job_id: str = PathParam(..., description="任务 ID"), body
 
 @app.get("/v1/jobs/{job_id}/export", tags=["复核"], summary="导出标注",
          description="打码前的原始页面与复核后的全部框（COCO 格式），供训练检测模型。含真实病案内容：服务端设置 REDACTX_ALLOW_EXPORT=1 才可用，"
-                     "且只有保留原件、尚未完成复核的任务可以导出。", dependencies=[Depends(auth)])
-async def export_annotations(job_id: str = PathParam(..., description="任务 ID")):
+                     "且只有保留原件、尚未完成复核的任务可以导出；只有管理员 Key 能导出。")
+async def export_annotations(job_id: str = PathParam(..., description="任务 ID"), who: Principal = Depends(auth)):
     if not settings.allow_export:
         error(403, "EXPORT_DISABLED", "未开启标注导出（服务端设置 REDACTX_ALLOW_EXPORT=1 才可用）")
     if not settings.api_key:
         error(403, "EXPORT_NEEDS_KEY", "导出含真实病案内容：开启导出时须同时设置 REDACTX_API_KEY")
-    _review_job(job_id)
+    if not who.admin:
+        error(403, "EXPORT_ADMIN_ONLY", "导出含真实病案内容，只有管理员 Key 可以导出")
+    _review_job(job_id, who)
     out = store.dir(job_id) / "out"
     now = time.time()
     for old in out.glob("export-*.zip"):  # 下载中断时留下的导出包
@@ -321,17 +359,17 @@ def _audit(entry: dict) -> None:
 
 
 @app.post("/v1/jobs/{job_id}/review/finish", tags=["复核"], summary="复核完成",
-          description="立即删除为复核保留的打码前页面。之后只能再加框。", dependencies=[Depends(auth)])
-async def finish_review(job_id: str = PathParam(..., description="任务 ID")):
-    _review_job(job_id)
+          description="立即删除为复核保留的打码前页面。之后只能再加框。")
+async def finish_review(job_id: str = PathParam(..., description="任务 ID"), who: Principal = Depends(auth)):
+    _review_job(job_id, who)
     rep = await run_in_threadpool(store.review, job_id, review.finish)
     return rep["review"]
 
 
-@app.delete("/v1/jobs/{job_id}", tags=["任务"], summary="删除结果", description="立即删除脱敏文件、报告与预览，不等保留时长到期。处理中的任务返回 409。", dependencies=[Depends(auth)])
-def delete_job(job_id: str = PathParam(..., description="任务 ID")):
-    job = store.get(job_id)
-    if job and job["status"] in ("queued", "running"):
+@app.delete("/v1/jobs/{job_id}", tags=["任务"], summary="删除结果", description="立即删除脱敏文件、报告与预览，不等保留时长到期。处理中的任务返回 409。")
+def delete_job(job_id: str = PathParam(..., description="任务 ID"), who: Principal = Depends(auth)):
+    job = owned(job_id, who)
+    if job["status"] in ("queued", "running"):
         error(409, "BUSY", "任务正在处理，完成后再删除")
     if not store.delete(job_id):
         error(404, "NOT_FOUND", "任务不存在或已删除")
