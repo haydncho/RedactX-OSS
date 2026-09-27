@@ -2,6 +2,9 @@
 
 ## 未发布
 
+- 安全：文档转换隔离。
+  - LibreOffice 在沙箱里运行（`unshare -rnm`，不需要 root）：没有网络；本次工作目录单独挂入，整个数据目录被空的 tmpfs 盖住，转换进程读不到其他任务的原件、结果与数据库。不支持用户命名空间的环境（如直接在 macOS 上运行）退回直接运行，并在日志里警告。
+  - Markdown 渲染后按白名单重建 HTML：只保留 Markdown 本身会生成的标签，图片只接受 data: 内嵌，`file://`、`http://` 引用替换为“[图片]”，script、style、iframe 等连内容一起丢弃，链接只留文字。
 - 安全：服务端加固。
   - 所有响应加 `X-Frame-Options: DENY`、`X-Content-Type-Options: nosniff`、`Referrer-Policy: no-referrer`，页面加严格的 CSP（只允许本站脚本，禁止被嵌入）；`/v1/` 接口默认 `Cache-Control: no-store`。
   - API Key 改为常数时间比较。
