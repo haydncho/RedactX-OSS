@@ -167,18 +167,17 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
 .group:first-child { border-top: 0; padding-top: 0; }
 .group-title { display: flex; align-items: center; gap: 8px; font: 400 11px/16px var(--mono); color: var(--mute); letter-spacing: .06em; margin: 0 0 4px; }
 .group-title i { width: 6px; height: 6px; border-radius: 50%; }
-.ent { display: grid; grid-template-columns: 16px minmax(0, 1fr) 124px; align-items: center; gap: 10px; padding: 4px 0; }
+.ent { display: grid; grid-template-columns: 16px minmax(0, 1fr) 136px; align-items: center; gap: 10px; padding: 4px 0; }
 .ent label { cursor: pointer; font-size: 14px; line-height: 20px; }
-.ent input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--primary); margin: 0; }
+
 .ent.off label { color: var(--mute); }
 .ent.off .style-pick { opacity: .4; }
 .style-pick { position: relative; }
 .style-na { height: 28px; display: flex; align-items: center; padding: 0 10px; font-size: 12.5px; color: var(--mute); border-radius: 6px; box-shadow: 0 0 0 1px var(--hairline); }
 .ent.off .style-na { opacity: .4; }
-.style-pick select { width: 100%; height: 28px; appearance: none; background: var(--canvas); border: 0; box-shadow: 0 0 0 1px var(--hairline); border-radius: 6px; padding: 0 22px 0 42px; font-size: 12.5px; cursor: pointer; }
-.style-pick select:hover { box-shadow: 0 0 0 1px var(--hairline-strong); }
+.style-pick .dd-trigger { width: 100%; height: 28px; padding: 0 6px 0 40px; gap: 4px; font-size: 12.5px; }
 .style-pick .sty { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); pointer-events: none; }
-.style-pick::after { content: ""; position: absolute; right: 10px; top: 50%; width: 5px; height: 5px; border-right: 1.5px solid var(--mute); border-bottom: 1.5px solid var(--mute); transform: translateY(-70%) rotate(45deg); pointer-events: none; }
+
 
 /* 表单 */
 /* 高度：最少两行、最多八行文字（加上下内边距），拖动只在此范围内；词多时框内滚动 */
@@ -187,7 +186,8 @@ textarea:focus, input[type=password]:focus, select:focus { outline: none; box-sh
 .opt-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 0; }
 .opt-label { font-size: 14px; display: grid; }
 .opt-label small { color: var(--mute); font-size: 12px; line-height: 16px; }
-.opt-row select, .opt-row input[type=password] { height: 32px; background: var(--canvas); border: 0; box-shadow: 0 0 0 1px var(--hairline); border-radius: 6px; padding: 0 12px; font-size: 13px; width: 152px; }
+.opt-row .dd-trigger { width: 152px; height: 32px; }
+.opt-row input[type=password] { height: 32px; background: var(--canvas); border: 0; box-shadow: 0 0 0 1px var(--hairline); border-radius: 6px; padding: 0 12px; font-size: 13px; width: 152px; }
 .seg { display: inline-flex; background: var(--canvas-soft-2); border-radius: 8px; padding: 3px; gap: 2px; }
 .seg button { border: 0; background: none; height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; cursor: pointer; color: var(--body); }
 .seg button:hover { color: var(--ink); }
@@ -273,7 +273,7 @@ textarea:focus, input[type=password]:focus, select:focus { outline: none; box-sh
 .result { margin-top: 16px; }
 .viewer-bar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 4px 0 12px; }
 .check-inline { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--body); cursor: pointer; }
-.check-inline input { accent-color: var(--primary); }
+
 .pager { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .pager .num { font-size: 13px; color: var(--body); min-width: 64px; text-align: center; }
 .icon-btn { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 9999px; border: 0; background: var(--canvas); box-shadow: 0 0 0 1px var(--hairline); cursor: pointer; font-size: 17px; line-height: 1; color: var(--ink); }
@@ -320,7 +320,7 @@ textarea:focus, input[type=password]:focus, select:focus { outline: none; box-sh
 .review-bar[hidden] { display: none; }
 .rv-hint { color: var(--body); margin-right: auto; flex: 1 1 160px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rv-type { display: inline-flex; align-items: center; gap: 6px; color: var(--body); white-space: nowrap; }
-.rv-type select { height: 28px; background: var(--canvas); border: 0; box-shadow: 0 0 0 1px var(--hairline); border-radius: 6px; padding: 0 8px; font-size: 13px; max-width: 150px; }
+.rv-type .dd-trigger { height: 28px; width: 150px; }
 .rv-dirty { color: var(--mute); white-space: nowrap; }
 .rv-keys { color: var(--mute); font-size: 12px; text-decoration: underline dotted; cursor: help; white-space: pre-line; }
 .thumb.edited::after { content: ""; position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--warning-deep); box-shadow: 0 0 0 2px var(--canvas); }
@@ -428,9 +428,9 @@ dialog input { width: 100%; height: 40px; border: 0; box-shadow: 0 0 0 1px var(-
 .sk-preset { display: grid; gap: 8px; padding: 10px; border-radius: 8px; box-shadow: 0 0 0 1px var(--hairline); }
 .sk-bar { height: 16px; }
 .sk-group { display: grid; gap: 12px; padding-top: 4px; }
-.sk-ent { display: grid; grid-template-columns: 16px minmax(0, 1fr) 124px; align-items: center; gap: 10px; }
+.sk-ent { display: grid; grid-template-columns: 16px minmax(0, 1fr) 136px; align-items: center; gap: 10px; }
 .sk-box { width: 16px; height: 16px; border-radius: 4px; }
-.sk-pill { width: 100%; max-width: 124px; height: 28px; border-radius: 9999px; }
+.sk-pill { width: 100%; max-width: 136px; height: 28px; border-radius: 9999px; }
 .history li.sk-hist { grid-template-columns: 96px 1fr 72px; }
 .sk-col { display: grid; gap: 8px; }
 .sk-hist .sk-pill { width: 72px; height: 22px; }
@@ -447,4 +447,73 @@ dialog input { width: 100%; height: 40px; border: 0; box-shadow: 0 0 0 1px var(-
 .stage.img-loading { height: calc(100% - 32px); max-height: 720px; width: auto; max-width: 100%; aspect-ratio: 1 / 1.414; }
 .stage.img-loading img { opacity: 0; position: absolute; }
 .stage.img-loading .handle, .stage.img-loading .before-clip, .stage.img-loading .boxes { display: none; }
+
+/* 标题与选项一律不折行：放不下时显示省略号（悬停看全文） */
+.panel h2, .panel-head h2, .job-name, .job-meta, .summary h3, .history h2, dialog h3,
+.opt-label, .opt-label small, .preset b, .preset small, .group-title, .ent label, .ent .lb,
+.btn, .nav-btn, .seg button, .chip-local, .check-inline, .zoombar button, .pager .num,
+.rv-hint, .rv-type, .rv-dirty, .rv-keys, .counts .lb, .page-items .lb, .hist-name, .hist-meta, .history .when,
+.cta-hint, .eyebrow, .formats span, .tn, .tc, .total, .mini-actions button {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.opt-label { display: grid; min-width: 0; }
+.opt-label > small { display: block; }
+/* 带说明且控件较宽的选项（如出厂自检）：标签与说明占一行，控件单独一行、等分铺满 */
+.opt-row.stack { flex-direction: column; align-items: stretch; gap: 8px; }
+.opt-row.stack .seg { display: flex; width: 100%; }
+.opt-row.stack .seg button { flex: 1 1 0; }
+#btn-key { flex: none; }
+
+/* ---------- 自定义组件（Vercel 风格） ---------- */
+/* 下拉菜单：原生 select 只存值，不显示 */
+.dd-native { position: absolute !important; width: 1px !important; height: 1px !important; opacity: 0 !important; pointer-events: none !important; overflow: hidden; clip-path: inset(50%); }
+.dd-trigger { display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; height: 32px; padding: 0 10px 0 12px; border: 0; border-radius: 6px; background: var(--canvas);
+  box-shadow: 0 0 0 1px var(--hairline); color: var(--ink); font-size: 13px; cursor: pointer; text-align: left; transition: box-shadow .15s, background .15s; min-width: 0; }
+.dd-trigger:hover:not(:disabled) { box-shadow: 0 0 0 1px var(--hairline-strong); }
+.dd-trigger:focus-visible, .dd-trigger[aria-expanded="true"] { outline: none; box-shadow: 0 0 0 1px var(--hairline-strong), 0 0 0 4px color-mix(in srgb, var(--link) 18%, transparent); }
+.dd-trigger:disabled { cursor: default; opacity: .5; }
+.dd-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.dd-chev { width: 14px; height: 14px; flex: none; fill: none; stroke: var(--mute); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s; }
+.dd-trigger[aria-expanded="true"] .dd-chev { transform: rotate(180deg); }
+.dd-menu { position: fixed; z-index: 1000; padding: 4px; border-radius: 10px; background: var(--canvas); box-shadow: var(--e5); overflow-y: auto; outline: none; max-width: min(360px, calc(100vw - 16px));
+  animation: dd-in .12s ease-out; scrollbar-width: thin; }
+@keyframes dd-in { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
+.dd-item { display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px 7px 8px; border-radius: 6px; font-size: 13px; line-height: 18px; color: var(--ink); cursor: pointer; user-select: none; }
+.dd-item.active { background: var(--canvas-soft-2); }
+.dd-item[aria-disabled="true"] { opacity: .45; cursor: default; }
+.dd-check { width: 14px; height: 14px; flex: none; margin-top: 2px; fill: none; stroke: var(--ink); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; visibility: hidden; }
+.dd-item[aria-selected="true"] .dd-check { visibility: visible; }
+.dd-item[aria-selected="true"] { font-weight: 500; }
+.dd-text { display: grid; min-width: 0; }
+.dd-text > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dd-text small { color: var(--mute); font-size: 11.5px; line-height: 16px; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (prefers-reduced-motion: reduce) { .dd-menu { animation: none; } }
+
+/* 复选框 */
+input[type="checkbox"]:not(.switch) { appearance: none; -webkit-appearance: none; flex: none; width: 16px; height: 16px; margin: 0; border-radius: 4px; background: var(--canvas);
+  box-shadow: inset 0 0 0 1px var(--hairline-strong); display: inline-grid; place-content: center; cursor: pointer; transition: background .12s, box-shadow .12s; }
+input[type="checkbox"]:not(.switch)::after { content: ""; width: 9px; height: 5px; border-left: 2px solid var(--on-primary); border-bottom: 2px solid var(--on-primary); transform: translateY(-1px) rotate(-45deg) scale(0); transition: transform .12s; }
+input[type="checkbox"]:not(.switch):checked { background: var(--primary); box-shadow: none; }
+input[type="checkbox"]:not(.switch):checked::after { transform: translateY(-1px) rotate(-45deg) scale(1); }
+input[type="checkbox"]:not(.switch):hover { box-shadow: inset 0 0 0 1px var(--ink); }
+input[type="checkbox"]:not(.switch):checked:hover { box-shadow: none; }
+input[type="checkbox"]:focus-visible, .switch:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--canvas), 0 0 0 4px color-mix(in srgb, var(--link) 45%, transparent); }
+
+/* 悬停提示 */
+.ui-tip { position: fixed; z-index: 1100; max-width: 320px; padding: 6px 10px; border-radius: 6px; background: var(--ink); color: var(--canvas); font-size: 12px; line-height: 18px;
+  white-space: pre-line; pointer-events: none; box-shadow: 0 4px 12px rgba(0, 0, 0, .18); animation: tip-in .12s ease-out; }
+@keyframes tip-in { from { opacity: 0; transform: translateY(2px); } }
+@media (prefers-reduced-motion: reduce) { .ui-tip { animation: none; } }
+
+/* 确认框 */
+.ui-confirm { width: min(400px, 92vw); }
+.ui-confirm .hint { margin: 8px 0 20px; }
+
+/* 对话框里的次要按钮（取消等）：不加线框，浅灰底，与右侧主按钮同高 */
+.dlg-actions .btn { height: 34px; }
+.dlg-actions .btn.ghost { box-shadow: none; background: var(--canvas-soft-2); }
+.dlg-actions .btn.ghost:hover { background: color-mix(in srgb, var(--canvas-soft-2) 70%, var(--hairline-strong)); }
+.dlg-actions .btn.ghost.danger { background: transparent; color: var(--error); }
+.dlg-actions .btn.ghost.danger:hover { background: var(--error-soft); }
+.dlg-actions .btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--canvas), 0 0 0 4px color-mix(in srgb, var(--link) 45%, transparent); }
 

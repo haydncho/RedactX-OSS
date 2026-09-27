@@ -124,7 +124,7 @@
         onclick: () => applyPreset(p.code),
       },
       el("div", { class: "swatch" }, el("span", { style: "width:34%" }), el("i", { class: `sty sty-${sty}` }), el("span", { style: "width:22%" })),
-      el("b", { text: p.name }), el("small", { text: p.desc })));
+      el("b", { text: p.name }), el("small", { text: p.desc, title: p.desc })));
     }
   }
 
@@ -153,11 +153,12 @@
         // 水印在识别前整页擦除，打码样式不适用
         const pick = e.code === "WATERMARK" ? el("div", { class: "style-na", title: "只擦除水印像素，下面的正文保留" }, "直接擦除")
           : el("div", { class: "style-pick" }, sw, sel);
-        const row = el("div", { class: `ent${on ? "" : " off"}` }, cb, el("label", { for: id, text: e.name }), pick);
+        const row = el("div", { class: `ent${on ? "" : " off"}` }, cb, el("label", { for: id, text: e.name, title: e.name }), pick);
         wrap.append(row);
       }
       root.append(wrap);
     }
+    root.querySelectorAll("select").forEach((s) => UI.makeSelect(s));
     updateSelToggle();
   }
 
@@ -434,7 +435,7 @@
     $("#review-bar").hidden = !reviewing;
     $("#stage").classList.toggle("reviewing", reviewing);
     if (!reviewing) return;
-    $("#rv-hint").textContent = editable() ? "拖出新框；点选后可拖动、拉伸或按 Delete 删除"
+    $("#rv-hint").textContent = editable() ? "拖出新框，点选后可调整"
       : report.review?.finished ? "复核已完成，只能再加框：拖出新框" : "未保留原件，只能加框：拖出新框";
     $("#rv-hint").title = $("#rv-hint").textContent + (editable() ? "" : "（打码前的页面已删除，已有的框不能删除或修改）");
     $("#rv-del").disabled = !(sel && canEdit(sel));
@@ -521,12 +522,14 @@
     for (const e of catalog.entities.filter((e) => !["WATERMARK", "CUSTOM"].includes(e.code))) sel_.append(el("option", { value: e.code, text: e.name }));
     if ([...sel_.options].some((o) => o.value === state.rv_type)) sel_.value = state.rv_type;
     sel_.onchange = () => setType(sel_.value);
-    $("#btn-review").onclick = () => {
+    UI.makeSelect(sel_);
+    const discard = () => UI.confirmDialog("有未保存的修改，退出复核后这些修改会丢失。", { title: "放弃未保存的修改？", ok: "放弃修改", cancel: "继续复核", danger: true });
+    $("#btn-review").onclick = async () => {
       if (!reviewing) return startReview();
-      if (dirty && !confirm("有未保存的修改，放弃吗？")) return;
+      if (dirty && !(await discard())) return;
       stopReview();
     };
-    $("#rv-cancel").onclick = () => { if (!dirty || confirm("放弃未保存的修改？")) stopReview(); };
+    $("#rv-cancel").onclick = async () => { if (!dirty || (await discard())) stopReview(); };
     $("#rv-del").onclick = deleteSel;
     $("#rv-save").onclick = saveReview;
     $("#rv-export").onclick = async () => {
@@ -567,7 +570,7 @@
         draft.push(it); sel = it;
         drag = { mode: "draw", it, x, y };
       }
-      if (drag) { drag.moved = false; layer.setPointerCapture(e.pointerId); }
+      if (drag) { drag.moved = false; (() => { try { layer.setPointerCapture(e.pointerId); } catch { /* 指针已松开 */ } })(); }
     });
     layer.addEventListener("pointermove", (e) => {
       if (!drag) return;
@@ -806,14 +809,16 @@
 
   // ---------- 启动 ----------
   async function init() {
+    UI.initTooltips();
     initKeyDialog();
+    UI.makeSelect($("#opt-retention"));
     // 标题后显示服务版本（/v1/health 不需要 API Key）
     fetch("/v1/health").then((r) => r.json()).then((h) => { const v = $("#brand-ver"); v.textContent = `v${h.version}`; v.hidden = false; exportEnabled = !!h.export; }).catch(() => {});
     try {
       catalog = await (await api("/v1/catalog")).json();
     } catch (e) {
       if (e.status === 401) {
-        openKeyDialog(store.get(KEY_KEY, "") ? "API Key 不正确，请重新填写。" : "这个服务需要 API Key 才能使用，请向服务管理员索取后填入。只保存在本浏览器。");
+        openKeyDialog(store.get(KEY_KEY, "") ? "API Key 不正确，请重新填写。" : "此服务需要 API Key，请向管理员索取。");
         toast(store.get(KEY_KEY, "") ? "API Key 不正确" : "需要 API Key");
       } else {
         toast("无法连接服务");
@@ -866,7 +871,7 @@
     window.addEventListener("dragover", (e) => e.preventDefault());
     window.addEventListener("drop", (e) => { e.preventDefault(); if (!$("#drop").hidden) return; const f = e.dataTransfer.files[0]; if (f) upload(f); });
 
-    $("#btn-new").onclick = () => { if (reviewing && dirty && !confirm("有未保存的修改，放弃吗？")) return; stopReview(); clearTimeout(pollTimer); $("#job").hidden = true; $("#drop").hidden = false; job = null; report = null; };
+    $("#btn-new").onclick = async () => { if (reviewing && dirty && !(await UI.confirmDialog("有未保存的修改，处理新文件后这些修改会丢失。", { title: "放弃未保存的修改？", ok: "放弃修改", cancel: "继续复核", danger: true }))) return; stopReview(); clearTimeout(pollTimer); $("#job").hidden = true; $("#drop").hidden = false; job = null; report = null; };
     // 删除前弹出确认框；默认焦点在“取消”上
     const dlgDel = $("#dlg-delete");
     $("#btn-delete").onclick = () => { if (job?.id) { dlgDel.returnValue = ""; dlgDel.showModal(); } };
@@ -910,7 +915,7 @@
   }
 
   // API Key 对话框：在请求任何数据之前绑定——没有 Key 时页面其余部分加载不出来，这个按钮必须照样能用
-  const KEY_HINT = "服务端设置了 REDACTX_API_KEY 时才需要填写。只保存在本浏览器。";
+  const KEY_HINT = "服务设置了 API Key 时才需填写，只存本浏览器。";
   function openKeyDialog(hint) {
     const dlg = $("#dlg-key");
     if (dlg.open) return;

@@ -23,7 +23,7 @@ ENTITIES = [
     {"code": "USCC", "name": "统一社会信用代码", "label": "机构代码", "group": "numbers", "default": True, "default_style": "label"},
     {"code": "EMAIL", "name": "电子邮箱", "label": "邮箱", "group": "numbers", "default": True, "default_style": "label"},
     {"code": "PLATE", "name": "车牌号", "label": "车牌", "group": "numbers", "default": True, "default_style": "label"},
-    {"code": "MEDICAL_ID", "name": "病案号、住院号等医疗标识号", "label": "医疗编号", "group": "medical", "default": True, "default_style": "label"},
+    {"code": "MEDICAL_ID", "name": "病案号等医疗标识号", "label": "医疗编号", "group": "medical", "default": True, "default_style": "label"},
     {"code": "HANDWRITTEN_FIELD", "name": "手写填写区（字段锚定）", "label": "手写", "group": "handwriting", "default": True, "default_style": "background"},
     {"code": "SIGNATURE", "name": "签名（手写与电子签名）", "label": "签名", "group": "handwriting", "default": True, "default_style": "hatch"},
     {"code": "SEAL", "name": "印章", "label": "印章", "group": "handwriting", "default": True, "default_style": "background"},
@@ -49,7 +49,7 @@ STYLE_CODES = {s["code"] for s in STYLES}
 
 PRESETS = [
     {"code": "audit", "name": "病案审核", "desc": "标签样式，看得出删了什么", "default_style": "label", "overrides": {}},
-    {"code": "public", "name": "对外公开", "desc": "背景色擦除，不暴露被删内容的类型", "default_style": "background", "overrides": {"QRCODE": "background"}},
+    {"code": "public", "name": "对外公开", "desc": "背景色擦除，不显示类型", "default_style": "background", "overrides": {"QRCODE": "background"}},
     {"code": "print", "name": "打印归档", "desc": "斜线花纹，黑白打印清楚", "default_style": "hatch", "overrides": {}},
     {"code": "classic", "name": "传统黑块", "desc": "全部纯黑遮盖", "default_style": "black", "overrides": {}},
 ]

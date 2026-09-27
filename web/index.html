@@ -100,7 +100,7 @@
           <button type="button" data-v="300" role="radio">300</button>
         </div>
       </div>
-      <div class="opt-row">
+      <div class="opt-row stack">
         <span class="opt-label">出厂自检<small>对输出再识别一遍，补打遗漏</small></span>
         <div class="seg" id="seg-verify" role="radiogroup" aria-label="出厂自检">
           <button type="button" data-v="auto" role="radio" title="只自检扫描页；文字层页自检要多花数倍时间">扫描页</button>
@@ -258,13 +258,14 @@
 <dialog id="dlg-key">
   <form method="dialog">
     <h3><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg>API Key</h3>
-    <p class="hint" id="key-hint">服务端设置了 REDACTX_API_KEY 时才需要填写。只保存在本浏览器。</p>
+    <p class="hint" id="key-hint">服务设置了 API Key 时才需填写，只存本浏览器。</p>
     <input type="password" id="key-input" autocomplete="off" aria-label="API Key">
     <div class="dlg-actions"><button class="btn ghost danger key-clear" value="clear" id="key-clear" hidden><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>退出</button><button class="btn ghost" value="cancel"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>取消</button><button class="btn primary" value="ok" id="key-save"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>保存</button></div>
   </form>
 </dialog>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="/static/ui.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>
