@@ -80,13 +80,26 @@
     }
     return r;
   }
+  // 设了 API Key 时图片要带请求头取回，转成 blob URL 显示。最多留 80 张，超出时释放最早的
+  const BLOB_MAX = 80;
   async function imgSrc(path) {
     if (!store.get(KEY_KEY, "")) return path;
-    if (blobCache.has(path)) return blobCache.get(path);
+    if (blobCache.has(path)) {
+      const u = blobCache.get(path); blobCache.delete(path); blobCache.set(path, u);  // 最近用过的排到最后
+      return u;
+    }
     const r = await api(path);
     const url = URL.createObjectURL(await r.blob());
     blobCache.set(path, url);
+    while (blobCache.size > BLOB_MAX) {
+      const [k, u] = blobCache.entries().next().value;
+      URL.revokeObjectURL(u); blobCache.delete(k);
+    }
     return url;
+  }
+  function clearBlobs() {
+    for (const u of blobCache.values()) URL.revokeObjectURL(u);
+    blobCache.clear();
   }
 
   function toast(msg) {
@@ -231,7 +244,7 @@
     if (file.size > maxUploadMB * 1024 * 1024) { toast(`文件 ${(file.size / 1048576).toFixed(1)} MB，超过单个文件 ${maxUploadMB} MB 的上限`); return; }
     const kind = (file.name.split(".").pop() || "").toUpperCase().slice(0, 4);
     job = { id: null, name: file.name, kind, pages: 0 };
-    report = null; page = 1; blobCache.clear();
+    report = null; page = 1; clearBlobs(); beforePage = 0;
     stopReview();
     showJob();
     setProgress(0, "上传中");
@@ -368,8 +381,9 @@
         io.unobserve(en.target);
       }
     }, { root: box, rootMargin: "200px" });
+    const per = countsByPage();
     for (let p = 1; p <= report.pages; p++) {
-      const n = itemsOf(p).length;
+      const n = per[p] || 0;
       const b = el("button", { class: "thumb img-loading", type: "button", "aria-label": `第 ${p} 页`, onclick: () => gotoPage(p) },
         el("img", { alt: "", "data-p": p }), el("span", { class: "tn", text: p }), n ? el("span", { class: "tc", text: n }) : null);
       box.append(b); io.observe(b);
@@ -389,15 +403,26 @@
       if (c.left < b.left) box.scrollLeft -= b.left - c.left + 4; else if (c.right > b.right) box.scrollLeft += c.right - b.right + 4;
       if (c.top < b.top) box.scrollTop -= b.top - c.top + 4; else if (c.bottom > b.bottom) box.scrollTop += c.bottom - b.bottom + 4;
     }
-    const [a, b] = await Promise.all([imgSrc(preview(page, "after")), imgSrc(preview(page, "before"))]);
+    // 原件图只在对比、原件视图里用到：只看脱敏后时不下载，切换视图时再补
+    const pg = page, needBefore = state.view !== "after";
+    const [a, b] = await Promise.all([imgSrc(preview(pg, "after")), needBefore ? imgSrc(preview(pg, "before")) : null]);
+    if (pg !== page) return;  // 等待期间又翻了页
     const img = $("#img-after");
     if (img.getAttribute("src") !== a) $("#stage").classList.add("img-loading");
     img.src = a;
-    $("#img-before").src = b;
+    if (b) { $("#img-before").src = b; beforePage = pg; }
     if (img.complete && img.naturalWidth) $("#stage").classList.remove("img-loading");
     renderBoxes();
     renderPageItems();
     renderView();
+  }
+
+  let dragRaf = 0;
+  function paintBox(it) {
+    const d = [...$("#boxes").children].find((n) => n._item === it);
+    if (!d) { renderBoxes(); return; }
+    const [x0, y0, x1, y1] = it.box;
+    Object.assign(d.style, { left: `${x0 * 100}%`, top: `${y0 * 100}%`, width: `${(x1 - x0) * 100}%`, height: `${(y1 - y0) * 100}%` });
   }
 
   function renderBoxes() {
@@ -479,9 +504,16 @@
     for (const [k, n] of b) if ((a.get(k) || 0) !== n) out.add(Number(k.split("|")[0]));
     return out;
   }
+  // 各页框数：一次遍历分组，不必每页筛一遍所有框
+  function countsByPage() {
+    const per = {};
+    for (const it of (reviewing ? draft : report?.items) || []) per[it.page] = (per[it.page] || 0) + 1;
+    return per;
+  }
   function renderAllThumbCounts() {
+    const per = countsByPage();
     document.querySelectorAll(".thumb").forEach((t, i) => {
-      const n = itemsOf(i + 1).length; let c = t.querySelector(".tc");
+      const n = per[i + 1] || 0; let c = t.querySelector(".tc");
       if (!c && n) { c = el("span", { class: "tc" }); t.append(c); }
       if (c) { c.textContent = n; c.hidden = !n; }
     });
@@ -524,7 +556,7 @@
     try {
       report = await (await api(`/v1/jobs/${job.id}/review`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) })).json();
     } catch (e) { toast(e.message); syncReview(); return; }
-    rev++; blobCache.clear();
+    rev++; clearBlobs(); beforePage = 0;
     toast("已保存并重新打码");
     stopReview(); startReview();
     renderSummary(); renderThumbs(); gotoPage(page); refreshHistory();
@@ -598,12 +630,16 @@
         drag.it.box = [b[0], b[1], Math.max(b[0] + 0.004, x), Math.max(b[1] + 0.004, y)];
       }
       drag.moved = true;
-      renderBoxes();
+      // 每帧最多重绘一次，而且只挪动被拖的这个框，不重建整页的框
+      const it = drag.it;
+      if (!dragRaf) dragRaf = requestAnimationFrame(() => { dragRaf = 0; paintBox(it); });
     });
     const end = () => {
       if (!drag) return;
       const { it, mode, moved } = drag; drag = null;
+      if (dragRaf) { cancelAnimationFrame(dragRaf); dragRaf = 0; }
       it.box = it.box.map((v) => Math.round(v * 10000) / 10000);
+      paintBox(it);
       if (mode === "draw" && (it.box[2] - it.box[0] < 0.005 || it.box[3] - it.box[1] < 0.004)) {
         draft.splice(draft.indexOf(it), 1); sel = null; syncReview(); renderBoxes(); return;
       }
@@ -650,10 +686,15 @@
     }
   }
 
+  let beforePage = 0;  // 原件图当前显示的是哪一页
   function renderView() {
     const stage = $("#stage");
     stage.classList.toggle("mode-after", state.view === "after");
     stage.classList.toggle("mode-before", state.view === "before");
+    if (state.view !== "after" && job?.id && report && beforePage !== page) {
+      const p = page;
+      imgSrc(preview(p, "before")).then((b) => { if (p === page) { $("#img-before").src = b; beforePage = p; } }).catch(() => {});
+    }
   }
 
   // ---------- 缩放：100% 为适应窗口；⌘/Ctrl + 滚轮、触控板捏合、工具条、键盘 + − 0 ----------
@@ -839,7 +880,7 @@
 
   async function openJob(id, ext) {
     job = { id, name: jobNames.get(id) || `任务 ${id.slice(4, 12)}`, kind: (ext || "").toUpperCase() };
-    blobCache.clear(); typeFilter = null;
+    clearBlobs(); beforePage = 0; typeFilter = null;
     showJob();
     showResultSkeleton();
     // 直接滚到任务面板（手机上它在设置区下面，滚到页顶看到的是设置）；先看到骨架，结果到了原地替换
@@ -993,6 +1034,7 @@
     $("#boxes").replaceChildren();
     $("#sum-total").textContent = "—"; $("#sum-pages").textContent = "—"; $("#sum-foot").textContent = "";
     for (const id of ["#img-after", "#img-before"]) $(id).removeAttribute("src");
+    beforePage = 0;
     $("#stage").classList.add("img-loading");
   }
 

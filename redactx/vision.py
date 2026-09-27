@@ -131,11 +131,9 @@ def _ink_mask(img: np.ndarray, rect: Rect, exclude: list[Rect] | None = None):
             ink[b:d, a:c] = 0
     # 只保留高度达到区域高度 18% 以上的连通笔画，过滤噪点、虚线和下划线残段
     n, lab, stats, _ = cv2.connectedComponentsWithStats(ink, connectivity=8)
-    keep = np.zeros_like(ink)
-    for i in range(1, n):
-        if stats[i, cv2.CC_STAT_HEIGHT] >= 0.18 * rh and stats[i, cv2.CC_STAT_AREA] >= 12:
-            keep[lab == i] = 1
-    return keep, (x0, y0)
+    good = (stats[:, cv2.CC_STAT_HEIGHT] >= 0.18 * rh) & (stats[:, cv2.CC_STAT_AREA] >= 12)
+    good[0] = False  # 0 号是背景
+    return good[lab].astype(ink.dtype), (x0, y0)
 
 
 def has_ink(img: np.ndarray, rect: Rect, min_ratio: float = 0.01, exclude: list[Rect] | None = None) -> bool:
@@ -444,20 +442,25 @@ BAND_PX = 20  # 按带统计水印像素时的带宽（像素）
 
 
 def _band_proj(shape, angle: float) -> np.ndarray:
-    """每个像素在“垂直于文字方向”的轴上的投影坐标：同一行水印落在同一段投影区间里。"""
+    """每个像素在“垂直于文字方向”的轴上的投影坐标：同一行水印落在同一段投影区间里。
+    用广播计算，不生成整页的坐标网格（数值与逐像素计算完全相同）。"""
     a = np.radians(angle)
-    ys, xs = np.mgrid[0 : shape[0], 0 : shape[1]]
-    return xs * -np.sin(a) + ys * np.cos(a)
+    return np.arange(shape[1]) * -np.sin(a) + np.arange(shape[0])[:, None] * np.cos(a)
 
 
-def _band_hist(mask: np.ndarray, angle: float) -> np.ndarray:
-    proj = _band_proj(mask.shape, angle)[mask]
-    return np.bincount(((proj - proj.min()) // BAND_PX).astype(int)) if len(proj) else np.zeros(1, int)
+def _band_hist(pts: tuple[np.ndarray, np.ndarray], angle: float) -> np.ndarray:
+    """pts 为 np.nonzero(mask) 的 (ys, xs)：只算被选中像素的投影。"""
+    ys, xs = pts
+    if not len(xs):
+        return np.zeros(1, int)
+    a = np.radians(angle)
+    proj = xs * -np.sin(a) + ys * np.cos(a)
+    return np.bincount(((proj - proj.min()) // BAND_PX).astype(int))
 
 
-def _effective_bands(mask: np.ndarray, angle: float) -> float:
-    """mask 里的像素沿 angle 方向实际分布在多少条带上（(Σh)²/Σh²），越小越集中。"""
-    h = _band_hist(mask, angle).astype(np.float64)
+def _effective_bands(pts: tuple[np.ndarray, np.ndarray], angle: float) -> float:
+    """像素沿 angle 方向实际分布在多少条带上（(Σh)²/Σh²），越小越集中。"""
+    h = _band_hist(pts, angle).astype(np.float64)
     return float(h.sum() ** 2 / max((h ** 2).sum(), 1.0))
 
 
@@ -471,7 +474,8 @@ def erase_watermark_bands(img: np.ndarray, angle: float, wm: np.ndarray) -> Rect
     if near.sum() < 800:
         return None
     # 水印只在自己的角度上成带；一行行横排的灰色内容在水平方向更集中，不是水印
-    if _effective_bands(near, angle) > 0.6 * min(_effective_bands(near, a) for a in (0.0, 90.0, angle + 90.0)):
+    pts = np.nonzero(near)
+    if _effective_bands(pts, angle) > 0.6 * min(_effective_bands(pts, a) for a in (0.0, 90.0, angle + 90.0)):
         return None
     proj = _band_proj(img.shape[:2], angle)
     lo = float(proj.min())

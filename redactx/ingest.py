@@ -54,7 +54,8 @@ ODF_TYPES = {"application/vnd.oasis.opendocument.text": "odt", "application/vnd.
 def sniff(path: Path, ext_hint: str = "") -> str:
     """按文件头判断真实类型，不信任扩展名。扩展名只用于区分同一容器格式下的变体（如 doc 与 wps）。"""
     ext_hint = ext_hint.lower().lstrip(".")
-    head = path.read_bytes()[:16]
+    with path.open("rb") as fh:  # 只读文件头，不把整个文件读进内存
+        head = fh.read(16)
     if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
         return "webp"
     for magic, kind in MAGIC:
@@ -69,7 +70,8 @@ def sniff(path: Path, ext_hint: str = "") -> str:
             with zipfile.ZipFile(path) as z:
                 names = z.namelist()
                 if "mimetype" in names:
-                    mt = z.read("mimetype").decode("ascii", "ignore").strip()
+                    with z.open("mimetype") as m:  # 限长读取，防压缩炸弹
+                        mt = m.read(128).decode("ascii", "ignore").strip()
                     if mt in ODF_TYPES:
                         return ODF_TYPES[mt]
                 for prefix, kind in ZIP_DIRS.items():
@@ -82,7 +84,8 @@ def sniff(path: Path, ext_hint: str = "") -> str:
     if head.startswith(b"{\\rtf"):
         return "rtf"
     if ext_hint in ("md", "markdown", "txt", "text"):
-        sample = path.read_bytes()[:65536]
+        with path.open("rb") as fh:
+            sample = fh.read(65536)
         if b"\x00" not in sample:
             for enc in ("utf-8", "gb18030"):
                 try:

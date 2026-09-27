@@ -442,7 +442,8 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
             progress(0.62 + 0.36 * (i + 0.5) / n, f"自检第 {i + 1}/{n} 页")
             vlines = ocr.ocr_page(img, 0)
             vpd = PageData(index=i, width=pd.width, height=pd.height, lines=vlines, rotation=pd.rotation)
-            extra = [h for h in engine.page_hits(vpd, enabled, opts.custom_words)[0] if h.source in ("rule", "custom")]
+            # 自检只补规则与自定义词的漏遮：不必再跑锚定、模板与人名识别
+            extra = engine.text_hits(vpd, enabled, opts.custom_words)
             extra += engine.propagate(vpd, seeds, extra)
             # 斜向文字是压在照片上、没能消除的水印（已知限制）；按外接矩形补打会盖掉一大块照片
             extra = [h for h in extra if not vision._is_slanted(vpd.lines[h.line].angle)]

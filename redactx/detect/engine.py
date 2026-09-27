@@ -15,8 +15,8 @@ SEED_TYPES = {"PERSON", "STAFF", "ORG", "ID_CARD", "PHONE", "MEDICAL_ID", "BANK_
 _CJK = re.compile(r"^[一-龥·•]+$")
 
 
-def page_hits(page: PageData, enabled: set[str], custom: list[str]):
-    """单页识别，返回 (文字命中, 待验墨迹的填写区)。"""
+def text_hits(page: PageData, enabled: set[str], custom: list[str]) -> list[Hit]:
+    """号码规则与自定义词的命中（出厂自检只用这两类）。"""
     hits: list[Hit] = []
     for li, line in enumerate(page.lines):
         text = line.text
@@ -27,6 +27,12 @@ def page_hits(page: PageData, enabled: set[str], custom: list[str]):
             for w in custom:
                 for m in re.finditer(re.escape(w), text):
                     hits.append(Hit("CUSTOM", "custom", page.index, li, m.start(), m.end(), w))
+    return hits
+
+
+def page_hits(page: PageData, enabled: set[str], custom: list[str]):
+    """单页识别，返回 (文字命中, 待验墨迹的填写区)。"""
+    hits = text_hits(page, enabled, custom)
     ahits, fields = anchor(page, enabled)
     hits.extend(ahits)
     # 表单模板：补出 OCR 没认出字段名的字段
