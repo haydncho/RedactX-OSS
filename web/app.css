@@ -103,9 +103,6 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
 [data-theme="dark"] .topbar::before { background: radial-gradient(120% 140% at 18% -40%, rgba(255, 255, 255, .06), transparent 60%), radial-gradient(80% 120% at 85% 140%, color-mix(in srgb, var(--link) 9%, transparent), transparent 70%); }
 .brand { display: flex; align-items: center; gap: 10px; }
 .mark { width: 24px; height: 24px; }
-.mark-doc { fill: var(--primary); }
-.mark-line { fill: var(--on-primary); }
-.mark-pill { fill: var(--on-primary); opacity: .55; }
 .brand-name { font-weight: 600; font-size: 18px; letter-spacing: -0.02em; }
 .brand-dot { color: var(--mute); font-weight: 600; font-size: 18px; margin: 0 -2px; }
 .brand-ver { font: 500 11.5px/1 var(--mono); color: var(--body); padding: 4px 7px; border-radius: 9999px; box-shadow: 0 0 0 1px var(--hairline); letter-spacing: 0; }

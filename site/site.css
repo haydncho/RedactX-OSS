@@ -64,9 +64,6 @@ code { font: 13px/1.6 var(--mono); }
 .brand { display: flex; align-items: center; gap: 8px; text-decoration: none; font-weight: 600; font-size: 17px; letter-spacing: -.02em; white-space: nowrap; }
 .brand .dot { color: var(--mute); }
 .mark { width: 24px; height: 24px; margin-right: 2px; }
-.mark-bg { fill: var(--primary); }
-.mark-fg { fill: var(--on-primary); }
-.mark-fg.dim { opacity: .55; }
 .ver { font: 500 11.5px/1 var(--mono); color: var(--body); padding: 4px 7px; border-radius: 9999px; box-shadow: 0 0 0 1px var(--hairline); margin-left: 4px; }
 .nav { display: flex; align-items: center; gap: 4px; }
 .nav a { text-decoration: none; color: var(--body); font-size: 14px; padding: 6px 10px; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px; }
