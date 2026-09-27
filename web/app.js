@@ -266,7 +266,7 @@
   }
 
   function setProgress(p, msg) {
-    $("#progress-fill").style.width = `${Math.max(2, Math.round(p * 100))}%`;
+    $("#progress-fill").style.clipPath = `inset(0 ${100 - Math.max(2, Math.round(p * 100))}% 0 0 round 9999px)`;
     $("#progress-pct").textContent = `${Math.round(p * 100)}%`;
     $("#progress-msg").textContent = msg;
   }

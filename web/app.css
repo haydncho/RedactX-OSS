@@ -276,7 +276,7 @@ textarea:focus, input[type=password]:focus, select:focus { outline: none; box-sh
 
 .progress { margin-top: 20px; }
 .progress-bar { height: 4px; background: var(--canvas-soft-2); border-radius: 9999px; overflow: hidden; }
-.progress-bar span { display: block; height: 100%; width: 0; background: var(--primary); border-radius: 9999px; transition: width .4s ease; }
+.progress-bar span { display: block; height: 100%; background: linear-gradient(90deg, #0070F3, #7C3AED 45%, #EC4899 75%, #F59E0B); clip-path: inset(0 100% 0 0 round 9999px); transition: clip-path .4s ease; }
 .progress-text { display: flex; justify-content: space-between; font-size: 13px; color: var(--body); margin-top: 8px; }
 .alert { margin-top: 16px; background: var(--error-soft); color: var(--error-deep); border-radius: 6px; padding: 10px 14px; font-size: 14px; box-shadow: 0 0 0 1px color-mix(in srgb, var(--error) 25%, transparent); }
 
