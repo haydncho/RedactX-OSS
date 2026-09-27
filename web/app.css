@@ -338,15 +338,54 @@ textarea:focus, input[type=password]:focus, select:focus { outline: none; box-sh
 .btn.sm { height: 28px; padding: 0 10px; font-size: 13px; gap: 5px; }
 .btn.sm .ic { width: 14px; height: 14px; }
 #btn-review[aria-pressed="true"] { background: var(--primary); color: var(--on-primary); box-shadow: none; }
-.review-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; padding: 8px 10px; margin: 0 0 12px; border-radius: 8px; background: var(--canvas-soft); box-shadow: var(--ring); font-size: 13px; }
+/* 复核栏：左侧状态（模式、提示、未保存的修改），中间工具（框类型、删除），右侧操作；窄屏按组换行 */
+.review-bar { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 6px 6px 6px 10px; margin: 0 0 12px; border-radius: 10px; background: var(--canvas-soft); box-shadow: var(--ring); font-size: 13px; }
 .review-bar[hidden] { display: none; }
-.rv-hint { color: var(--body); margin-right: auto; flex: 1 1 160px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv-status { display: flex; align-items: center; gap: 8px; flex: 1 1 220px; min-width: 0; }
+.rv-mode { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px 0 6px; border-radius: 9999px; font-size: 12px; font-weight: 500; white-space: nowrap; flex: none; cursor: help;
+  color: var(--link-deep); background: color-mix(in srgb, var(--link) 12%, transparent); }
+.rv-mode .ic { width: 13px; height: 13px; }
+.rv-mode.locked { color: var(--warning-deep); background: var(--warning-soft); }
+.rv-mode:focus-visible { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--link) 45%, transparent); }
+.rv-hint { color: var(--mute); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv-dirty { color: var(--mute); white-space: nowrap; flex: none; }
+.rv-dirty.on { color: var(--warning-deep); font-weight: 500; }
+.rv-dirty.on::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: currentColor; vertical-align: 1px; }
+.rv-hint:has(+ .rv-dirty.on) { display: none; }  /* 有未保存的修改时只显示修改数，腾出位置 */
+.rv-tools, .rv-actions { display: flex; align-items: center; gap: 6px; flex: none; }
 .rv-type { display: inline-flex; align-items: center; gap: 6px; color: var(--body); white-space: nowrap; }
-.rv-type .dd-trigger { height: 28px; width: 150px; }
-.rv-dirty { color: var(--mute); white-space: nowrap; }
-.rv-keys { color: var(--mute); font-size: 12px; text-decoration: underline dotted; cursor: help; white-space: pre-line; }
-.thumb.edited::after { content: ""; position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--warning-deep); box-shadow: 0 0 0 2px var(--canvas); }
-.rv-dirty.on { color: var(--ink); font-weight: 500; }
+.rv-type .dd-trigger { height: 28px; width: 140px; }
+.btn[aria-disabled="true"] { opacity: .4; cursor: not-allowed; }
+.btn.danger[aria-disabled="true"]:hover { background: var(--canvas); }
+.icon-btn.sm { width: 28px; height: 28px; border-radius: 6px; }
+.icon-btn.sm .ic { width: 15px; height: 15px; }
+.icon-btn[aria-expanded="true"] { background: var(--canvas-soft-2); box-shadow: 0 0 0 1px var(--hairline-strong); }
+.rv-sep { width: 1px; height: 18px; margin: 0 2px; background: var(--hairline); }
+/* 快捷键卡片与“更多”菜单：挂在复核栏右下 */
+.rv-pop { position: absolute; top: calc(100% + 6px); right: 6px; z-index: 50; padding: 10px 12px; border-radius: 10px; background: var(--canvas); box-shadow: var(--e5); font-size: 12.5px; max-width: min(380px, calc(100vw - 32px)); animation: dd-in .12s ease-out; }
+.rv-pop[hidden] { display: none; }
+.kbd-list { display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; margin: 0; align-items: center; }
+.kbd-list dt { white-space: nowrap; color: var(--ink); font-weight: 500; }
+.kbd-list dd { margin: 0; color: var(--body); }
+kbd { display: inline-block; min-width: 18px; padding: 1px 5px; border-radius: 4px; font: 500 11px/16px var(--mono); text-align: center; color: var(--ink); background: var(--canvas-soft-2); box-shadow: inset 0 -1px 0 var(--hairline-strong), 0 0 0 1px var(--hairline); }
+.rv-menu { padding: 4px; width: 300px; }
+.rv-menu button { display: flex; gap: 10px; align-items: flex-start; width: 100%; padding: 8px 10px; border: 0; border-radius: 6px; background: none; text-align: left; font: inherit; font-size: 13px; color: var(--ink); cursor: pointer; }
+.rv-menu button:hover, .rv-menu button:focus-visible { background: var(--canvas-soft-2); outline: none; }
+.rv-menu button[hidden] { display: none; }
+.rv-menu button:disabled { opacity: .45; cursor: default; }
+.rv-menu button .ic { margin-top: 1px; color: var(--body); }
+.rv-menu button span { display: grid; gap: 2px; }
+.rv-menu small { color: var(--mute); font-size: 12px; line-height: 16px; }
+.rv-menu-empty { margin: 0; padding: 8px 10px; color: var(--mute); font-size: 12.5px; }
+.rv-menu-empty[hidden] { display: none; }
+@media (max-width: 760px) {
+  .review-bar { padding: 8px; }
+  .rv-status { flex-basis: 100%; }
+  .rv-tools { flex: 1 1 auto; }
+  .rv-type .dd-trigger { width: 120px; }
+  .rv-actions { flex: 1 1 100%; justify-content: flex-end; }
+  .rv-actions #rv-save { flex: 1; }
+}
 .btn:disabled { opacity: .4; cursor: default; }
 .stage.reviewing .boxes { pointer-events: auto; cursor: crosshair; }
 .stage.reviewing .box { cursor: pointer; background: color-mix(in srgb, var(--bc, var(--link)) 14%, transparent); }
@@ -565,7 +604,7 @@ dialog input { width: 100%; height: 40px; border: 0; box-shadow: 0 0 0 1px var(-
 .panel h2, .panel-head h2, .job-name, .job-meta, .summary h3, .history h2, dialog h3,
 .opt-label, .opt-label small, .preset b, .preset small, .group-title, .ent label, .ent .lb,
 .btn, .nav-btn, .seg button, .chip-local, .check-inline, .zoombar button, .pager .num,
-.rv-hint, .rv-type, .rv-dirty, .rv-keys, .counts .lb, .page-items .lb, .hist-name, .hist-meta, .history .when,
+.rv-hint, .rv-type, .rv-dirty, .rv-mode, .counts .lb, .page-items .lb, .hist-name, .hist-meta, .history .when,
 .cta-hint, .eyebrow, .formats span, .tn, .tc, .total, .mini-actions button {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
 }

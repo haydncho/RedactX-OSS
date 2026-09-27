@@ -433,14 +433,18 @@
   }
 
   // ---------- 复核：拖出新框；保留原件的任务还可点选后拖动、拉伸、删除 ----------
-  let reviewing = false, draft = null, sel = null, dirty = 0, viewBefore = null, exportEnabled = false;
+  let reviewing = false, draft = null, sel = null, dirty = 0, viewBefore = null, exportEnabled = false, lockNoticed = false;
   const editable = () => !!report?.review?.editable;
   const canEdit = (it) => editable() || !!it._new;
+  // 已有的框不能删改的原因（打码前的页面不在服务器上，删框后无法还原被遮的内容）
+  const lockReason = () => report?.review?.finished
+    ? "复核已完成，为复核保留的打码前页面已删除：已有的框不能再删除或修改，只能加框。"
+    : "提交时没有开启“保留原件以便复核”，服务器上没有打码前的页面：已有的框不能删除或修改，只能加框。需要删框、改框时，开启该选项后重新处理。";
 
   function startReview() {
     if (!report) return;
-    reviewing = true; sel = null; dirty = 0;
-    draft = report.items.map((it) => ({ ...it }));
+    reviewing = true; sel = null; dirty = 0; lockNoticed = false;
+    draft = report.items.map((it) => ({ ...it, _k: itemKey(it) }));
     viewBefore = state.view; state.view = "after";
     document.querySelectorAll("#seg-view button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.v === "after")));
     renderView(); syncReview(); renderBoxes(); renderPageItems();
@@ -449,6 +453,7 @@
   function stopReview() {
     if (!reviewing) return;
     reviewing = false; draft = null; sel = null; dirty = 0;
+    closePops();
     if (viewBefore) { state.view = viewBefore; viewBefore = null; document.querySelectorAll("#seg-view button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.v === state.view))); renderView(); }
     syncReview();
     if (report) { renderBoxes(); renderPageItems(); }
@@ -459,26 +464,64 @@
     $("#review-bar").hidden = !reviewing;
     $("#stage").classList.toggle("reviewing", reviewing);
     if (!reviewing) return;
-    $("#rv-hint").textContent = editable() ? "拖出新框，点选后可调整"
-      : report.review?.finished ? "复核已完成，只能再加框：拖出新框" : "未保留原件，只能加框：拖出新框";
-    $("#rv-hint").title = $("#rv-hint").textContent + (editable() ? "" : "（打码前的页面已删除，已有的框不能删除或修改）");
-    $("#rv-del").disabled = !(sel && canEdit(sel));
+    const ed = editable();
+    const mode = $("#rv-mode");
+    mode.classList.toggle("locked", !ed);
+    mode.querySelector("use").setAttribute("href", ed ? "#i-edit" : "#i-lock");
+    $("#rv-mode-text").textContent = ed ? "可删改" : "只能加框";
+    mode.title = ed ? "提交时开启了“保留原件以便复核”：可以加框、删框、改框。复核完成或到期后删除保留的页面。" : lockReason();
+    $("#rv-hint").textContent = ed ? "拖动画框，点选框可编辑" : "拖动画新框";
+    const canDel = !!(sel && canEdit(sel));
+    $("#rv-del").setAttribute("aria-disabled", String(!canDel));
+    $("#rv-del").title = canDel ? "删除所选框（Delete）" : sel ? lockReason() : "先在页面上点选一个框";
     $("#rv-save").disabled = !dirty;
-    const pages = changedPages();
-    const d = $("#rv-dirty"); d.textContent = dirty ? `未保存 ${dirty} 处修改${pages.size ? `，涉及 ${pages.size} 页` : ""}` : "没有修改"; d.classList.toggle("on", !!dirty);
+    const pages = changedPages(), st = changeStats();
+    const parts = [st.added && `新增 ${st.added}`, st.removed && `删除 ${st.removed}`, st.edited && `改动 ${st.edited}`].filter(Boolean);
+    const d = $("#rv-dirty");
+    d.textContent = dirty ? `未保存：${parts.join("、")} 个框${pages.size > 1 ? `（${pages.size} 页）` : ""}` : "没有修改";
+    d.classList.toggle("on", !!dirty);
     document.querySelectorAll(".thumb").forEach((t, i) => t.classList.toggle("edited", pages.has(i + 1)));
     // 选中框时，类型下拉框显示并可修改它的类型
     const ty = $("#rv-type");
     if (sel && [...ty.options].some((o) => o.value === sel.type)) ty.value = sel.type;
     else if (!sel && [...ty.options].some((o) => o.value === state.rv_type)) ty.value = state.rv_type;
     $("#rv-type-label").textContent = sel && canEdit(sel) ? "所选框类型" : "新框类型";
-    $("#rv-finish").hidden = !editable();
-    $("#rv-export").hidden = !(exportEnabled && editable());
+    // “更多”菜单：导出标注、完成复核（都只对保留了打码前页面的任务有效）
+    $("#rv-finish").hidden = !ed;
+    $("#rv-export").hidden = !(exportEnabled && ed);
     $("#rv-export").disabled = !!dirty;
-    $("#rv-export").title = dirty ? "先保存修改再导出" : "打码前的原始页面与复核后的框（COCO 格式），供训练检测模型；含真实内容";
+    $("#rv-export").querySelector("small").textContent = dirty ? "先保存修改再导出" : "打码前的原始页面与复核后的框（COCO 格式），供训练检测模型；含真实内容";
+    $("#rv-more-empty").hidden = ed;
   }
 
-  const touched = () => { dirty++; syncReview(); renderBoxes(); };
+  // 未保存的修改：按框计数（一个框挪了几次也只算一处改动）
+  function changeStats() {
+    if (!reviewing || !report) return { added: 0, removed: 0, edited: 0, total: 0 };
+    let added = 0, edited = 0, kept = 0;
+    for (const it of draft) {
+      if (it._new) added++;
+      else { kept++; if (itemKey(it) !== it._k) edited++; }
+    }
+    const removed = report.items.length - kept;
+    return { added, removed, edited, total: added + removed + edited };
+  }
+
+  // 快捷键卡片与“更多”菜单：同一时间只开一个，点外面或按 Esc 关闭
+  let openPop = null;
+  function closePops() {
+    if (!openPop) return false;
+    openPop.pop.hidden = true; openPop.btn.setAttribute("aria-expanded", "false"); openPop = null;
+    return true;
+  }
+  function togglePop(btn, pop) {
+    const wasOpen = openPop?.pop === pop;
+    closePops();
+    if (wasOpen) return;
+    pop.hidden = false; btn.setAttribute("aria-expanded", "true"); openPop = { btn, pop };
+    pop.querySelector("button:not([hidden]):not(:disabled)")?.focus();
+  }
+
+  const touched = () => { dirty = changeStats().total; syncReview(); renderBoxes(); };
   const itemKey = (it) => `${it.page}|${it.type}|${it.box.map((v) => v.toFixed(4)).join(",")}|${it.style || ""}`;
   // 草稿与已保存的报告不同的页
   function changedPages() {
@@ -506,7 +549,8 @@
   }
 
   function deleteSel() {
-    if (!sel || !canEdit(sel)) return;
+    if (!sel) { toast("先在页面上点选一个框"); return; }
+    if (!canEdit(sel)) { toast(lockReason(), 5000); return; }
     draft.splice(draft.indexOf(sel), 1); sel = null; touched(); renderPageItems(); renderAllThumbCounts();
   }
 
@@ -538,7 +582,7 @@
 
   async function saveReview() {
     const btn = $("#rv-save"); btn.disabled = true;
-    const items = draft.map(({ _new, ...it }) => (_new ? { page: it.page, type: it.type, box: it.box } : it));
+    const items = draft.map(({ _new, _k, ...it }) => (_new ? { page: it.page, type: it.type, box: it.box } : it));
     try {
       report = await (await api(`/v1/jobs/${job.id}/review`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) })).json();
     } catch (e) { toast(e.message); syncReview(); return; }
@@ -563,8 +607,14 @@
     $("#rv-cancel").onclick = async () => { if (!dirty || (await discard())) stopReview(); };
     $("#rv-del").onclick = deleteSel;
     $("#rv-save").onclick = saveReview;
-    $("#rv-export").onclick = () => downloadBlob(`/v1/jobs/${job.id}/export`, `annotations-${job.id}.zip`);
+    $("#rv-export").onclick = () => { closePops(); downloadBlob(`/v1/jobs/${job.id}/export`, `annotations-${job.id}.zip`); };
+    $("#rv-keys").onclick = () => togglePop($("#rv-keys"), $("#rv-keys-pop"));
+    $("#rv-more").onclick = () => togglePop($("#rv-more"), $("#rv-more-pop"));
+    document.addEventListener("pointerdown", (e) => {
+      if (openPop && !openPop.pop.contains(e.target) && !openPop.btn.contains(e.target)) closePops();
+    }, true);
     $("#rv-finish").onclick = async () => {
+      closePops();
       const ok = await UI.confirmDialog("将立即删除为复核保留的打码前页面。之后仍可加框，但不能再删框或改框。",
         { title: "完成复核？", ok: "完成并删除", icon: "check-all", okIcon: "check" });
       if (!ok || !job?.id) return;
@@ -586,6 +636,7 @@
         drag = { mode: "resize", it: hit, box0: [...hit.box] };
       } else if (hit) {
         sel = hit;
+        if (!canEdit(hit) && !lockNoticed) { lockNoticed = true; toast(lockReason(), 5000); }
         drag = canEdit(hit) ? { mode: "move", it: hit, x, y, box0: [...hit.box] } : null;
         syncReview(); renderBoxes();
       } else {
@@ -632,7 +683,7 @@
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { done(); if (dirty) saveReview(); return; }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "Delete" || e.key === "Backspace") { done(); deleteSel(); }
-      else if (e.key === "Escape") { done(); sel = null; syncReview(); renderBoxes(); }
+      else if (e.key === "Escape") { done(); if (!closePops()) { sel = null; syncReview(); renderBoxes(); } }
       else if (e.key === "Tab") { done(); selectNext(e.shiftKey ? -1 : 1); }
       else if (e.key === "[" || e.key === "]") {
         done();
