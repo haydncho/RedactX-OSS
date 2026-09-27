@@ -378,14 +378,23 @@ kbd { display: inline-block; min-width: 18px; padding: 1px 5px; border-radius: 4
 .rv-menu small { color: var(--mute); font-size: 12px; line-height: 16px; }
 .rv-menu-empty { margin: 0; padding: 8px 10px; color: var(--mute); font-size: 12.5px; }
 .rv-menu-empty[hidden] { display: none; }
+/* 手机端：第二行是框类型（占满）与快捷键、更多两个图标；第三行是删除所选、放弃修改、保存 */
 @media (max-width: 760px) {
-  .review-bar { padding: 8px; }
+  .review-bar { padding: 8px; gap: 8px; }
   .rv-status { flex-basis: 100%; }
-  .rv-tools { flex: 1 1 auto; }
-  .rv-type .dd-trigger { width: 120px; }
-  .rv-actions { flex: 1 1 100%; justify-content: flex-end; }
-  .rv-actions #rv-save { flex: 1; }
+  .rv-tools, .rv-actions { display: contents; }
+  .rv-type { order: 1; flex: 1 1 0; min-width: 0; }
+  .rv-type .dd-trigger { flex: 1; width: auto; min-width: 0; }
+  #rv-keys { order: 2; } #rv-more { order: 3; }
+  .rv-sep { order: 4; flex-basis: 100%; width: auto; height: 0; margin: 0; }
+  #rv-del { order: 5; } #rv-cancel { order: 6; }
+  #rv-save { order: 7; flex: 1; min-width: 0; }
 }
+@media (max-width: 420px) {
+  .review-bar { gap: 8px 6px; }
+  #rv-del, #rv-cancel, #rv-save { padding: 0 8px; gap: 4px; }
+}
+@media (max-width: 380px) { .rv-long { display: none; } }  /* 很窄的手机上保存按钮只写“保存” */
 .btn:disabled { opacity: .4; cursor: default; }
 .stage.reviewing .boxes { pointer-events: auto; cursor: crosshair; }
 .stage.reviewing .box { cursor: pointer; background: color-mix(in srgb, var(--bc, var(--link)) 14%, transparent); }
