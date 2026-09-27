@@ -67,3 +67,14 @@ def test_upload_rejected_by_content_length_before_reading(client, monkeypatch):
 def test_health_reports_upload_limit(client):
     c, _, _, _ = client
     assert c.get("/v1/health").json()["max_upload_mb"] == app_mod.settings.max_upload_mb
+
+
+@pytest.mark.parametrize("bad", ["..", "%2E%2E", "job_../../x", "job_TEST"])
+def test_delete_rejects_path_traversal(client, monkeypatch, bad):
+    c, job_id, _, tmp = client
+    monkeypatch.setattr(app_mod.settings, "api_key", None)
+    sentinel = tmp / "sentinel.txt"
+    sentinel.write_text("keep")
+    r = c.delete(f"/v1/jobs/{bad}")
+    assert r.status_code == 404
+    assert sentinel.exists() and (tmp / "jobs" / job_id).exists()

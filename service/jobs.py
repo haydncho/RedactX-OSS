@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import shutil
 import sqlite3
 import threading
@@ -45,6 +46,9 @@ CREATE TABLE IF NOT EXISTS jobs (
 """
 
 
+# 任务 ID：job_ 加 20 位小写字母数字（生成时用 uuid4 的十六进制）
+JOB_ID = re.compile(r"job_[0-9a-z]{20}")
+
 class JobStore:
     def __init__(self, root: Path):
         self.root = root
@@ -64,6 +68,9 @@ class JobStore:
         return c
 
     def dir(self, job_id: str) -> Path:
+        # job_id 来自 URL：只接受本服务生成的格式，杜绝“..”等路径穿越
+        if not JOB_ID.fullmatch(job_id or ""):
+            raise ValueError("非法的任务 ID")
         return self.root / "jobs" / job_id
 
     def create(self, src_bytes_path: Path, ext: str, opts: Options, retention_hours: float, pages: int | None = None) -> str:
@@ -127,6 +134,8 @@ class JobStore:
         return report
 
     def get(self, job_id: str) -> dict | None:
+        if not JOB_ID.fullmatch(job_id or ""):
+            return None
         with self._conn() as c:
             row = c.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
         if not row:
@@ -147,6 +156,8 @@ class JobStore:
         return out
 
     def delete(self, job_id: str) -> bool:
+        if not JOB_ID.fullmatch(job_id or ""):
+            return False
         with self._lock, self._conn() as c:
             n = c.execute("DELETE FROM jobs WHERE id=?", (job_id,)).rowcount
         shutil.rmtree(self.dir(job_id), ignore_errors=True)
