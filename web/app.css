@@ -578,3 +578,12 @@ dialog.bottom-sheet h3 { margin: 4px 4px 12px; font-size: 15px; }
   .viewer-bar .pager { justify-self: end; margin-left: 0; }
 }
 
+/* 手机：上传、处理中只剩“处理新文件”一个按钮时，占满整行、用醒目的蓝色 */
+@media (max-width: 640px) {
+  .job-actions:not(:has(> .btn:not([hidden]):not(#btn-new))) #btn-new {
+    grid-column: 1 / -1; height: 44px; font-size: 15px; background: #0070f3; color: #fff; box-shadow: none;
+  }
+  .job-actions:not(:has(> .btn:not([hidden]):not(#btn-new))) #btn-new:hover { background: #0761d1; }
+  .job-actions:not(:has(> .btn:not([hidden]):not(#btn-new))) #btn-new .ic { stroke: #fff; }
+}
+
