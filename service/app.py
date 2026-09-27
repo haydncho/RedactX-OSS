@@ -322,7 +322,16 @@ async def redact_sync(
     return Response(data, media_type=media, headers={"X-Redact-Counts": json.dumps(report["counts"]), "Cache-Control": "no-store"})
 
 
-app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
+class _RevalidatedStatic(StaticFiles):
+    """页面脚本与样式每次使用前向服务端确认（ETag 未变时返回 304，不重新下载），更新后浏览器不会继续用旧文件。"""
+
+    async def get_response(self, path, scope):
+        resp = await super().get_response(path, scope)
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+
+app.mount("/static", _RevalidatedStatic(directory=WEB_DIR), name="static")
 
 
 @app.get("/docs", include_in_schema=False)

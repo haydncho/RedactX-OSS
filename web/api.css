@@ -66,4 +66,9 @@ pre.code code { background: none; box-shadow: none; padding: 0; font-size: inher
   .api-layout { grid-template-columns: minmax(0, 1fr); padding: 16px; }
   .api-nav { position: static; max-height: none; }
   .api-facts { grid-template-columns: minmax(0, 1fr); }
+  /* 窄屏：卡片不被表格撑宽，表格在卡片内横向滚动 */
+  .api-card, .api-nav, .api-intro { min-width: 0; }
+  .api-card { padding: 16px; }
+  .api-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+  .api-intro h1 { font-size: 26px; line-height: 34px; }
 }

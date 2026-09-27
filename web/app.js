@@ -808,9 +808,32 @@
   }
 
   // ---------- 启动 ----------
+  // 上传入口：在请求任何数据之前绑定（没有 API Key、目录还没加载时也要有反应）。
+  // “选择文件”是原生 <label for="file">，由浏览器直接打开文件选择器，手机浏览器不会拦截
+  function initUpload() {
+    const drop = $("#drop");
+    const take = (f) => {
+      if (!f) return;
+      if (!catalog) { openKeyDialog(store.get(KEY_KEY, "") ? "API Key 不正确，请重新填写后再上传。" : "此服务需要 API Key，填写后再上传。"); return; }
+      upload(f);
+    };
+    $("#pick").addEventListener("click", (e) => e.stopPropagation());  // label 自己会打开选择器，不再冒泡到拖放区
+    $("#pick").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pickFile(); } });
+    drop.onclick = (e) => { if (!e.target.closest("#pick")) pickFile(); };
+    drop.onkeydown = (e) => { if (e.target === drop && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); pickFile(); } };
+    $("#file").onchange = (e) => { take(e.target.files[0]); e.target.value = ""; };
+    ["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+    ["dragleave", "drop"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+    drop.addEventListener("drop", (e) => take(e.dataTransfer.files[0]));
+    // 在页面任何位置放下文件都可以
+    window.addEventListener("dragover", (e) => e.preventDefault());
+    window.addEventListener("drop", (e) => { e.preventDefault(); if (!$("#drop").hidden) return; take(e.dataTransfer.files[0]); });
+  }
+
   async function init() {
     UI.initTooltips();
     initKeyDialog();
+    initUpload();
     UI.makeSelect($("#opt-retention"));
     // 标题后显示服务版本（/v1/health 不需要 API Key）
     fetch("/v1/health").then((r) => r.json()).then((h) => { const v = $("#brand-ver"); v.textContent = `v${h.version}`; v.hidden = false; exportEnabled = !!h.export; }).catch(() => {});
@@ -859,17 +882,6 @@
       renderEntities(); save();
     };
 
-    const drop = $("#drop");
-    $("#pick").onclick = (e) => { e.stopPropagation(); pickFile(); };
-    drop.onclick = pickFile;
-    drop.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pickFile(); } };
-    $("#file").onchange = (e) => { const f = e.target.files[0]; if (f) upload(f); e.target.value = ""; };
-    ["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
-    ["dragleave", "drop"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
-    drop.addEventListener("drop", (e) => { const f = e.dataTransfer.files[0]; if (f) upload(f); });
-    // 在页面任何位置放下文件都可以
-    window.addEventListener("dragover", (e) => e.preventDefault());
-    window.addEventListener("drop", (e) => { e.preventDefault(); if (!$("#drop").hidden) return; const f = e.dataTransfer.files[0]; if (f) upload(f); });
 
     $("#btn-new").onclick = async () => { if (reviewing && dirty && !(await UI.confirmDialog("有未保存的修改，处理新文件后这些修改会丢失。", { title: "放弃未保存的修改？", ok: "放弃修改", cancel: "继续复核", danger: true }))) return; stopReview(); clearTimeout(pollTimer); $("#job").hidden = true; $("#drop").hidden = false; job = null; report = null; };
     // 删除前弹出确认框；默认焦点在“取消”上

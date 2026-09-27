@@ -517,3 +517,19 @@ input[type="checkbox"]:focus-visible, .switch:focus-visible { outline: none; box
 .dlg-actions .btn.ghost.danger:hover { background: var(--error-soft); }
 .dlg-actions .btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--canvas), 0 0 0 4px color-mix(in srgb, var(--link) 45%, transparent); }
 
+/* 顶部栏：链接与按钮不折行；手机宽度只显示图标（悬停与读屏仍有完整文字） */
+.topbar, .topbar-right, .brand { min-width: 0; }
+.toplink, .nav-btn, .brand, .brand-name { white-space: nowrap; flex: none; }
+@media (max-width: 640px) {
+  .topbar { padding: 0 12px; gap: 8px; }
+  .brand { gap: 6px; }
+  .brand-ver, .brand-sep, .brand-en { display: none !important; }
+  .topbar-right { gap: 4px; }
+  .toplink .tl-text, .nav-btn .tl-text { display: none; }
+  .toplink, .nav-btn { width: 32px; height: 32px; padding: 0; justify-content: center; }
+  #btn-key.connected .ic { display: none; }
+}
+/* 文件框：视觉隐藏但保留在页面里（display:none 的文件框在部分手机浏览器上无法由按钮打开） */
+.file-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; clip-path: inset(50%); pointer-events: none; }
+label.btn { user-select: none; }
+
