@@ -333,7 +333,10 @@ textarea:focus, input[type=password]:focus, select:focus { outline: none; box-sh
 .box.sel { border-width: 2px; box-shadow: 0 0 0 3px color-mix(in srgb, var(--bc, var(--link)) 30%, transparent); z-index: 1; }
 .box .rs { position: absolute; right: -5px; bottom: -5px; width: 10px; height: 10px; border-radius: 2px; background: var(--canvas); box-shadow: 0 0 0 1.5px var(--bc, var(--link)); cursor: nwse-resize; }
 .viewer.pan .stage.reviewing .boxes { pointer-events: none; }
-.handle { position: absolute; top: 0; bottom: 0; left: 50%; width: 0; cursor: ew-resize; }
+.handle { position: absolute; top: 0; bottom: 0; left: 50%; width: 0; cursor: ew-resize; touch-action: none; }
+/* 手指可按的区域比分隔线宽 */
+.handle::after { content: ""; position: absolute; top: 0; bottom: 0; left: -22px; width: 44px; }
+.before-clip { will-change: clip-path; }
 .handle::before { content: ""; position: absolute; top: 0; bottom: 0; left: -0.5px; width: 1px; background: #171717; }
 .handle span { position: absolute; top: 50%; left: -16px; width: 32px; height: 32px; margin-top: -16px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.12), 0 4px 12px rgba(0,0,0,.18); }
 .handle span::before, .handle span::after { content: ""; position: absolute; top: 11px; border: 5px solid transparent; }
@@ -557,4 +560,21 @@ dialog.bottom-sheet h3 { margin: 4px 4px 12px; font-size: 15px; }
 .sheet-item span { display: grid; gap: 2px; min-width: 0; }
 .sheet-item small { font-size: 12.5px; font-weight: 400; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sheet-cancel { width: 100%; height: 44px; font-size: 15px; box-shadow: none; background: var(--canvas-soft-2); }
+
+/* 对比视图：分隔线右侧（脱敏后）整体盖一层淡淡的蒙板，与左侧原件区分；遮盖框照常显示。页面图总是白纸，深浅主题用同一种深色蒙板 */
+.after-mask { position: absolute; top: 0; bottom: 0; right: 0; left: var(--split, 50%); pointer-events: none; background: rgba(15, 23, 42, .06); display: none; }
+.stage:not(.mode-after):not(.mode-before):not(.reviewing) .after-mask { display: block; }
+
+/* 手机：任务操作两行两列铺满；查看方式单独一行，显示遮盖框与翻页在下一行左右两侧 */
+@media (max-width: 640px) {
+  .job-head { flex-direction: column; align-items: stretch; }
+  .job-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; }
+  .job-actions .btn { width: 100%; height: 40px; font-size: 14px; justify-content: center; }
+  .job-actions .btn .ic { width: 16px; height: 16px; }
+  .viewer-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px 12px; }
+  .viewer-bar #seg-view { grid-column: 1 / -1; display: flex; width: 100%; }
+  .viewer-bar #seg-view button { flex: 1 1 0; height: 32px; }
+  .viewer-bar .check-inline { justify-self: start; }
+  .viewer-bar .pager { justify-self: end; margin-left: 0; }
+}
 

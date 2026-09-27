@@ -265,6 +265,7 @@
     $("#progress").hidden = false;
     $("#btn-download").hidden = true;
     $("#btn-delete").hidden = true;
+    $("#btn-review").hidden = true;
   }
 
   function setProgress(p, msg) {
@@ -316,6 +317,7 @@
       setTimeout(() => URL.revokeObjectURL(url), 5000);
     };
     $("#btn-delete").hidden = false;
+    $("#btn-review").hidden = false;
     renderSummary();
     renderThumbs();
     gotoPage(1);
@@ -756,16 +758,26 @@
 
   function initHandle() {
     const stage = $("#stage"), handle = $("#handle"), clip = $("#before-clip");
-    let pct = 50;
-    const setPct = (v) => {
-      pct = Math.min(100, Math.max(0, v));
+    let pct = 50, pending = null;
+    // 左侧原件、右侧脱敏后；分隔线位置写进 --split，遮盖框只显示在右侧。拖动时每帧只重绘一次
+    const apply = () => {
+      pending = null;
       handle.style.left = `${pct}%`;
       clip.style.clipPath = `inset(0 ${100 - pct}% 0 0)`;
+      stage.style.setProperty("--split", `${pct}%`);
       handle.setAttribute("aria-valuenow", Math.round(pct));
     };
-    const fromEvent = (e) => { const r = stage.getBoundingClientRect(); setPct(((e.clientX - r.left) / r.width) * 100); };
-    handle.addEventListener("pointerdown", (e) => { handle.setPointerCapture(e.pointerId); fromEvent(e); });
+    const setPct = (v) => {
+      pct = Math.min(100, Math.max(0, v));
+      if (pending == null) pending = requestAnimationFrame(apply);
+    };
+    let rect = null;
+    const fromEvent = (e) => { const r = rect || stage.getBoundingClientRect(); setPct(((e.clientX - r.left) / r.width) * 100); };
+    handle.addEventListener("pointerdown", (e) => { e.preventDefault(); rect = stage.getBoundingClientRect(); try { handle.setPointerCapture(e.pointerId); } catch { /* 指针已松开 */ } fromEvent(e); });
     handle.addEventListener("pointermove", (e) => { if (handle.hasPointerCapture(e.pointerId)) fromEvent(e); });
+    const release = () => { rect = null; };
+    handle.addEventListener("pointerup", release);
+    handle.addEventListener("pointercancel", release);
     handle.addEventListener("keydown", (e) => { if (e.key === "ArrowLeft") setPct(pct - 5); if (e.key === "ArrowRight") setPct(pct + 5); });
     stage.addEventListener("click", (e) => { if (panClick()) { dragged = false; return; } if (state.view === "compare" && e.target !== handle) fromEvent(e); });
     setPct(50);
@@ -845,8 +857,18 @@
     window.addEventListener("drop", (e) => { e.preventDefault(); if (!$("#drop").hidden) return; take(e.dataTransfer.files[0]); });
   }
 
+  // 手机上“复核”与“处理新文件、删除结果、下载脱敏文件”排成两行两列；宽屏放回查看栏
+  function placeReviewButton() {
+    const phone = matchMedia("(max-width: 640px)");
+    const btn = $("#btn-review"), actions = $(".job-actions"), bar = $(".viewer-bar"), pager = bar.querySelector(".pager");
+    const place = () => { if (phone.matches) actions.append(btn); else bar.insertBefore(btn, pager); };
+    phone.addEventListener("change", place);
+    place();
+  }
+
   async function init() {
     UI.initTooltips();
+    placeReviewButton();
     initKeyDialog();
     initUpload();
     UI.makeSelect($("#opt-retention"));
