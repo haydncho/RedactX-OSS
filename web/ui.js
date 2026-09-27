@@ -2,17 +2,7 @@
    原生 <select> 保留在页面里存值、派发 change 事件，外观换成按钮 + 浮层菜单；原有代码照常读写 select.value。 */
 (function () {
   "use strict";
-  const h = (tag, attrs = {}, ...kids) => {
-    const n = document.createElement(tag);
-    for (const [k, v] of Object.entries(attrs)) {
-      if (k === "class") n.className = v;
-      else if (k === "text") n.textContent = v;
-      else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
-      else n.setAttribute(k, v);
-    }
-    for (const c of kids) if (c != null) n.append(c);
-    return n;
-  };
+  const h = window.DOM.el;  // web/dom.js
   const chevron = () => {
     const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("class", "dd-chev"); s.setAttribute("aria-hidden", "true");
@@ -130,15 +120,17 @@
   document.addEventListener("scroll", (e) => { if (openMenu && !openMenu.menu.contains(e.target)) closeMenu(false); }, true);
 
   // ---------- 确认框 ----------
-  function confirmDialog(message, { title = "确认", ok = "确定", cancel = "取消", danger = false } = {}) {
+  // icon：标题前的图标；okIcon：确认按钮的图标（名称见页面里的 <symbol id="i-名称">）。默认焦点在“取消”上
+  function confirmDialog(message, { title = "确认", ok = "确定", cancel = "取消", danger = false, icon = null, okIcon = null } = {}) {
+    const ic = window.DOM.icon;
     return new Promise((resolve) => {
       const dlg = h("dialog", { class: danger ? "dlg-danger ui-confirm" : "ui-confirm" },
         h("form", { method: "dialog" },
-          h("h3", { text: title }),
+          h("h3", {}, icon ? ic(icon) : null, title),
           h("p", { class: "hint", text: message }),
           h("div", { class: "dlg-actions" },
-            h("button", { class: "btn ghost", value: "cancel", text: cancel }),
-            h("button", { class: danger ? "btn danger-solid" : "btn primary", value: "ok", text: ok }))));
+            h("button", { class: "btn ghost", value: "cancel" }, icon ? ic("x") : null, cancel),
+            h("button", { class: danger ? "btn danger-solid" : "btn primary", value: "ok" }, okIcon ? ic(okIcon) : null, ok))));
       document.body.append(dlg);
       dlg.addEventListener("close", () => { resolve(dlg.returnValue === "ok"); dlg.remove(); });
       dlg.showModal();
@@ -150,7 +142,6 @@
   let tip = null, tipFor = null, tipTimer = 0;
   function hideTip() {
     clearTimeout(tipTimer);
-    if (tipFor && tipFor.dataset.tip != null && !tipFor.hasAttribute("title")) { /* 保持 data-tip，下次仍可显示 */ }
     tip?.remove(); tip = null; tipFor = null;
   }
   function showTip(el) {

@@ -1,38 +1,8 @@
 /* 锐消 RedactX 接口文档页：读取 /openapi.json 生成接口列表。不加载任何外部资源。 */
 (() => {
   "use strict";
-  const $ = (s) => document.querySelector(s);
-  const el = (tag, attrs = {}, ...kids) => {
-    const n = document.createElement(tag);
-    for (const [k, v] of Object.entries(attrs)) {
-      if (k === "class") n.className = v;
-      else if (k === "text") n.textContent = v;
-      else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
-      else if (v !== undefined && v !== null && v !== false) n.setAttribute(k, v === true ? "" : v);
-    }
-    for (const c of kids) if (c != null) n.append(c);
-    return n;
-  };
-  const icon = (name) => {
-    const NS = "http://www.w3.org/2000/svg";
-    const svg = document.createElementNS(NS, "svg");
-    svg.setAttribute("class", "ic");
-    svg.setAttribute("aria-hidden", "true");
-    const use = document.createElementNS(NS, "use");
-    use.setAttribute("href", `#i-${name}`);
-    svg.append(use);
-    return svg;
-  };
-  const toast = (msg) => {
-    const t = $("#toast");
-    t.textContent = msg;
-    t.classList.add("show");
-    clearTimeout(toast.t);
-    toast.t = setTimeout(() => t.classList.remove("show"), 1800);
-  };
-  const apiKey = () => {
-    try { return JSON.parse(localStorage.getItem("redactx.apikey") || '""'); } catch { return ""; }
-  };
+  const { $, el, icon, apiKey } = window.DOM;  // web/dom.js
+  const toast = (msg) => window.DOM.toast(msg, 1800);
 
   let spec = null;
   const resolve = (s) => {

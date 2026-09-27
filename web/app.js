@@ -1,33 +1,9 @@
 /* 锐消 RedactX Web 页：选择脱敏字段与样式、上传、查看进度、对比预览、下载。 */
 (() => {
   "use strict";
-  const $ = (s) => document.querySelector(s);
-  const el = (tag, attrs = {}, ...kids) => {
-    const n = document.createElement(tag);
-    for (const [k, v] of Object.entries(attrs)) {
-      if (k === "class") n.className = v;
-      else if (k === "text") n.textContent = v;
-      else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
-      else if (v !== undefined && v !== null && v !== false) n.setAttribute(k, v === true ? "" : v);
-    }
-    for (const c of kids) if (c != null) n.append(c);
-    return n;
-  };
-
-  // 图标：引用 index.html 里定义的 <symbol>
-  const icon = (name) => {
-    const NS = "http://www.w3.org/2000/svg";
-    const svg = document.createElementNS(NS, "svg");
-    svg.setAttribute("class", "ic");
-    svg.setAttribute("aria-hidden", "true");
-    const use = document.createElementNS(NS, "use");
-    use.setAttribute("href", `#i-${name}`);
-    svg.append(use);
-    return svg;
-  };
+  const { $, el, icon, toast, store, KEY_KEY } = window.DOM;  // web/dom.js
 
   const STORE_KEY = "redactx.settings.v1";
-  const KEY_KEY = "redactx.apikey";
   // 原文件名常含患者姓名，服务端不保存；只记在本浏览器里（按任务 ID），任务删除或过期后一并清掉
   const NAMES_KEY = "redactx.jobnames.v1";
   const jobNames = {
@@ -36,10 +12,6 @@
     set(id, name) { const m = this.all(); m[id] = name; store.set(NAMES_KEY, m); },
     drop(id) { const m = this.all(); if (id in m) { delete m[id]; store.set(NAMES_KEY, m); } },
     keepOnly(ids) { const m = this.all(), keep = new Set(ids); let changed = false; for (const k of Object.keys(m)) if (!keep.has(k)) { delete m[k]; changed = true; } if (changed) store.set(NAMES_KEY, m); },
-  };
-  const store = {
-    get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
-    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* 隐私模式下忽略 */ } },
   };
 
   let catalog = null;
@@ -97,17 +69,21 @@
     }
     return url;
   }
+  // 带 API Key 请求头下载文件（链接下载带不上请求头）；失败时提示
+  async function downloadBlob(path, name) {
+    try {
+      const url = URL.createObjectURL(await (await api(path)).blob());
+      const a = el("a", { href: url, download: name });
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch (e) { toast(e.message); }
+  }
+  // 焦点在输入框、下拉框里时，快捷键让给输入
+  const typing = () => /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName);
+
   function clearBlobs() {
     for (const u of blobCache.values()) URL.revokeObjectURL(u);
     blobCache.clear();
-  }
-
-  function toast(msg) {
-    const t = $("#toast");
-    t.textContent = msg;
-    t.classList.add("show");
-    clearTimeout(toast._t);
-    toast._t = setTimeout(() => t.classList.remove("show"), 2600);
   }
 
   // ---------- 设置面板 ----------
@@ -327,11 +303,7 @@
     dl.onclick = async (ev) => {
       if (!store.get(KEY_KEY, "")) return; // 无 Key 时直接走链接下载
       ev.preventDefault();
-      const r = await api(`/v1/jobs/${job.id}/result`);
-      const url = URL.createObjectURL(await r.blob());
-      const a = el("a", { href: url, download: `redacted-${job.id}.${report.output.split(".").pop()}` });
-      document.body.append(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      downloadBlob(`/v1/jobs/${job.id}/result`, `redacted-${job.id}.${report.output.split(".").pop()}`);
     };
     $("#btn-delete").hidden = false;
     $("#btn-review").hidden = false;
@@ -424,6 +396,9 @@
     const [x0, y0, x1, y1] = it.box;
     Object.assign(d.style, { left: `${x0 * 100}%`, top: `${y0 * 100}%`, width: `${(x1 - x0) * 100}%`, height: `${(y1 - y0) * 100}%` });
   }
+
+  const confirmDiscard = (action) => UI.confirmDialog(`有未保存的修改，${action}后这些修改会丢失。`,
+    { title: "放弃未保存的修改？", ok: "放弃修改", cancel: "继续复核", danger: true });
 
   function renderBoxes() {
     const box = $("#boxes"); box.replaceChildren();
@@ -568,7 +543,7 @@
     if ([...sel_.options].some((o) => o.value === state.rv_type)) sel_.value = state.rv_type;
     sel_.onchange = () => setType(sel_.value);
     UI.makeSelect(sel_);
-    const discard = () => UI.confirmDialog("有未保存的修改，退出复核后这些修改会丢失。", { title: "放弃未保存的修改？", ok: "放弃修改", cancel: "继续复核", danger: true });
+    const discard = () => confirmDiscard("退出复核");
     $("#btn-review").onclick = async () => {
       if (!reviewing) return startReview();
       if (dirty && !(await discard())) return;
@@ -577,24 +552,16 @@
     $("#rv-cancel").onclick = async () => { if (!dirty || (await discard())) stopReview(); };
     $("#rv-del").onclick = deleteSel;
     $("#rv-save").onclick = saveReview;
-    $("#rv-export").onclick = async () => {
-      try {
-        const r = await api(`/v1/jobs/${job.id}/export`);
-        const url = URL.createObjectURL(await r.blob());
-        const a = el("a", { href: url, download: `annotations-${job.id}.zip` });
-        document.body.append(a); a.click(); a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 5000);
-      } catch (e) { toast(e.message); }
-    };
-    const dlgFin = $("#dlg-finish");
-    $("#rv-finish").onclick = () => { dlgFin.returnValue = ""; dlgFin.showModal(); };
-    dlgFin.addEventListener("close", async () => {
-      if (dlgFin.returnValue !== "ok" || !job?.id) return;
+    $("#rv-export").onclick = () => downloadBlob(`/v1/jobs/${job.id}/export`, `annotations-${job.id}.zip`);
+    $("#rv-finish").onclick = async () => {
+      const ok = await UI.confirmDialog("将立即删除为复核保留的打码前页面。之后仍可加框，但不能再删框或改框。",
+        { title: "完成复核？", ok: "完成并删除", icon: "check-all", okIcon: "check" });
+      if (!ok || !job?.id) return;
       if (dirty) await saveReview();
       try { report.review = await (await api(`/v1/jobs/${job.id}/review/finish`, { method: "POST" })).json(); } catch (e) { toast(e.message); return; }
       toast("复核完成，已删除保留的打码前页面");
       syncReview(); renderBoxes();
-    });
+    };
 
     const layer = $("#boxes");
     let drag = null;
@@ -649,7 +616,7 @@
     layer.addEventListener("pointercancel", end);
     // 复核快捷键；先于翻页、缩放等全局快捷键处理，处理过的不再往下传
     window.addEventListener("keydown", (e) => {
-      if (!reviewing || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName) || document.querySelector("dialog[open]")) return;
+      if (!reviewing || typing() || document.querySelector("dialog[open]")) return;
       const done = () => { e.preventDefault(); e.stopImmediatePropagation(); };
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { done(); if (dirty) saveReview(); return; }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -796,7 +763,6 @@
     v.addEventListener("pointerup", end);
     v.addEventListener("pointercancel", end);
     v.addEventListener("auxclick", (e) => { if (e.button === 1) e.preventDefault(); });
-    const typing = () => /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName);
     window.addEventListener("keydown", (e) => {
       if (!report || $("#result").hidden || typing() || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.code === "Space") { e.preventDefault(); if (!spaceHeld) { spaceHeld = true; syncPanClass(); } }
@@ -994,20 +960,21 @@
     };
 
 
-    $("#btn-new").onclick = async () => { if (reviewing && dirty && !(await UI.confirmDialog("有未保存的修改，处理新文件后这些修改会丢失。", { title: "放弃未保存的修改？", ok: "放弃修改", cancel: "继续复核", danger: true }))) return; stopReview(); clearTimeout(pollTimer); $("#job").hidden = true; $("#drop").hidden = false; job = null; report = null; };
+    $("#btn-new").onclick = async () => { if (reviewing && dirty && !(await confirmDiscard("处理新文件"))) return; stopReview(); clearTimeout(pollTimer); $("#job").hidden = true; $("#drop").hidden = false; job = null; report = null; };
     // 删除前弹出确认框；默认焦点在“取消”上
-    const dlgDel = $("#dlg-delete");
-    $("#btn-delete").onclick = () => { if (job?.id) { dlgDel.returnValue = ""; dlgDel.showModal(); } };
-    dlgDel.addEventListener("close", async () => {
-      if (dlgDel.returnValue !== "ok" || !job?.id) return;
+    $("#btn-delete").onclick = async () => {
+      if (!job?.id) return;
+      const ok = await UI.confirmDialog("将立即删除本任务的脱敏文件、报告和预览图，删除后无法恢复。原件预览图与为复核保留的打码前页面一并删除，本浏览器里记下的文件名也一并清除。上传的原文件在处理完成时已经删除。",
+        { title: "删除脱敏结果？", ok: "确认删除", danger: true, icon: "trash", okIcon: "trash" });
+      if (!ok || !job?.id) return;
       try { await api(`/v1/jobs/${job.id}`, { method: "DELETE" }); jobNames.drop(job.id); toast("已删除脱敏结果与预览"); } catch (e) { toast(e.message); return; }
       $("#btn-new").click(); refreshHistory();
-    });
+    };
     $("#pg-prev").onclick = () => gotoPage(page - 1);
     $("#pg-next").onclick = () => gotoPage(page + 1);
     $("#show-boxes").onchange = renderBoxes;
     window.addEventListener("keydown", (e) => {
-      if (!report || $("#result").hidden || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName)) return;
+      if (!report || $("#result").hidden || typing()) return;
       if (e.key === "ArrowDown" || e.key === "PageDown") { e.preventDefault(); gotoPage(page + 1); }
       if (e.key === "ArrowUp" || e.key === "PageUp") { e.preventDefault(); gotoPage(page - 1); }
       if (e.metaKey || e.ctrlKey || e.altKey) return;  // 不拦截浏览器自身的 ⌘+ / ⌘−

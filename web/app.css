@@ -482,7 +482,6 @@ dialog input { width: 100%; height: 40px; border: 0; box-shadow: 0 0 0 1px var(-
 .sk-count .skel:first-child { width: 8px; height: 8px; border-radius: 50%; }
 .result.loading .viewer-bar { pointer-events: none; opacity: .5; }
 .result.loading .zoombar { visibility: hidden; }
-.sk-page { width: min(62%, 520px); aspect-ratio: 1 / 1.414; margin: auto; border-radius: 2px; }
 /* 图片下载完之前：缩略图与画布显示流光 */
 .thumb.img-loading, .stage.img-loading { background: linear-gradient(90deg, var(--skel-a) 25%, var(--skel-b) 37%, var(--skel-a) 63%); background-size: 400% 100%; animation: skel 1.4s ease-in-out infinite; }
 .thumb.img-loading img { opacity: 0; }

@@ -248,22 +248,6 @@
   </main>
 </div>
 
-<dialog id="dlg-delete" class="dlg-danger">
-  <form method="dialog">
-    <h3><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>删除脱敏结果？</h3>
-    <p class="hint">将立即删除本任务的脱敏文件、报告和预览图，删除后无法恢复。原件预览图与为复核保留的打码前页面一并删除，本浏览器里记下的文件名也一并清除。上传的原文件在处理完成时已经删除。</p>
-    <div class="dlg-actions"><button class="btn ghost" value="cancel" autofocus><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>取消</button><button class="btn danger-solid" value="ok"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>确认删除</button></div>
-  </form>
-</dialog>
-
-<dialog id="dlg-finish">
-  <form method="dialog">
-    <h3><svg class="ic" aria-hidden="true"><use href="#i-check-all"/></svg>完成复核？</h3>
-    <p class="hint">将立即删除为复核保留的打码前页面。之后仍可加框，但不能再删框或改框。</p>
-    <div class="dlg-actions"><button class="btn ghost" value="cancel" autofocus><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>取消</button><button class="btn primary" value="ok"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>完成并删除</button></div>
-  </form>
-</dialog>
-
 <dialog id="dlg-photo" class="bottom-sheet" aria-labelledby="photo-title">
   <form method="dialog">
     <h3 id="photo-title">上传照片或图片</h3>
@@ -287,6 +271,7 @@
 </dialog>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="/static/dom.js"></script>
 <script src="/static/ui.js"></script>
 <script src="/static/app.js"></script>
 </body>
