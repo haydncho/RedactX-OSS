@@ -38,7 +38,7 @@ class Settings:
     # 无法为文档转换创建沙箱时拒绝转换 Word 等文档（默认退回直接运行并记警告）
     require_sandbox: bool = os.environ.get("REDACTX_REQUIRE_SANDBOX", "") in ("1", "true", "yes")
     api_key: str | None = os.environ.get("REDACTX_API_KEY") or None
-    max_upload_mb: int = int(os.environ.get("REDACTX_MAX_UPLOAD_MB", "30"))
+    max_upload_mb: int = int(os.environ.get("REDACTX_MAX_UPLOAD_MB", "50"))
     max_pages: int = int(os.environ.get("REDACTX_MAX_PAGES", "500"))
     sync_max_pages: int = 10
     sync_max_mb: int = 20

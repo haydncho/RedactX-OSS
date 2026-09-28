@@ -36,7 +36,7 @@
   let typeFilter = null;
   const blobCache = new Map();
   let rev = 0;             // 复核保存后递增，让预览图重新加载
-  let maxUploadMB = 30;    // 单个文件上传上限，启动时以 /v1/health 返回的为准
+  let maxUploadMB = 50;    // 单个文件上传上限，启动时以 /v1/health 返回的为准
 
   // ---------- 接口 ----------
   function headers() {
