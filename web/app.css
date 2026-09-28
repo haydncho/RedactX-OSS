@@ -342,8 +342,9 @@ textarea:focus, input[type=password]:focus, select:focus { outline: none; box-sh
 .review-bar { position: relative; display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 8px; margin: 0 0 12px; border-radius: 10px; background: var(--canvas-soft); box-shadow: var(--ring); font-size: 13px; }
 .review-bar[hidden] { display: none; }
 .rv-row { display: contents; }
-.rv-break { flex: 1 1 0; min-width: 0; }
-.rv-status { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; margin-right: 6px; }
+/* 状态占据剩余空间，按钮都靠右排在一起；rv-break 在桌面上是分组的细竖线，手机上用作换行 */
+.rv-break { flex: none; width: 1px; height: 18px; margin: 0 4px; background: var(--hairline); }
+.rv-status { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; margin-right: 6px; }
 .rv-mode { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px 0 6px; border-radius: 9999px; font-size: 12px; font-weight: 500; white-space: nowrap; flex: none; cursor: help;
   color: var(--link-deep); background: color-mix(in srgb, var(--link) 12%, transparent); }
 .rv-mode .ic { width: 13px; height: 13px; }
@@ -408,7 +409,7 @@ kbd { display: inline-block; min-width: 18px; padding: 1px 5px; border-radius: 4
   #rv-type-label, .rv-mode #rv-mode-text, .rv-hint, #rv-finish .rv-fin-text { display: revert; }
   .rv-mode { padding: 0 8px 0 6px; }
   #rv-finish { width: auto; padding: 0 10px; }
-  .rv-break { order: 9; flex-basis: 100%; height: 0; }
+  .rv-break { order: 9; flex-basis: 100%; width: auto; height: 0; margin: 0; }
   .review-bar:has(#rv-finish[hidden]) .rv-break { display: none; }
   #rv-finish { order: 10; flex: 1; }
 }
