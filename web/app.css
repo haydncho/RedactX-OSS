@@ -362,6 +362,7 @@ textarea:focus, input[type=password]:focus, select:focus { outline: none; box-sh
 .icon-btn.sm .ic { width: 15px; height: 15px; }
 .icon-btn[aria-expanded="true"] { background: var(--canvas-soft-2); box-shadow: 0 0 0 1px var(--hairline-strong); }
 .rv-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--hairline); }
+#rv-keys { margin-left: 4px; }  /* 两个小图标在最右侧，与保存隔开一点 */
 
 /* 快捷键卡片与“更多”菜单：挂在复核栏右下 */
 .rv-pop { position: absolute; top: calc(100% + 6px); right: 6px; z-index: 50; padding: 10px 12px; border-radius: 10px; background: var(--canvas); box-shadow: var(--e5); font-size: 12.5px; max-width: min(380px, calc(100vw - 32px)); animation: dd-in .12s ease-out; }
@@ -399,7 +400,7 @@ kbd { display: inline-block; min-width: 18px; padding: 1px 5px; border-radius: 4
   .rv-status { order: 1; flex-basis: 100%; }
   .rv-type { order: 2; flex: 1 1 0; min-width: 0; }
   .rv-type .dd-trigger { flex: 1; width: auto; min-width: 0; }
-  #rv-keys { order: 3; } #rv-more { order: 4; }
+  #rv-keys { order: 3; margin-left: 0; } #rv-more { order: 4; }
   .rv-sep { order: 5; flex-basis: 100%; width: auto; height: 0; margin: 0; }
   #rv-del { order: 6; margin-left: 0; } #rv-cancel { order: 7; }
   #rv-save { order: 8; flex: 1; min-width: 0; }
