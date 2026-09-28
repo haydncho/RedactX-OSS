@@ -70,6 +70,7 @@ pre.code code { background: none; box-shadow: none; padding: 0; font-size: inher
   .api-card, .api-nav, .api-intro { min-width: 0; }
   .api-card { padding: 16px; }
   .api-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+  .api-table th, .api-table td { white-space: nowrap; }  /* 手机上不折行，整张表横向滚动 */
   .api-intro h1 { font-size: 26px; line-height: 34px; }
 }
 
