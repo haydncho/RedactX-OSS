@@ -338,13 +338,12 @@ textarea:focus, input[type=password]:focus, select:focus { outline: none; box-sh
 .btn.sm { height: 28px; padding: 0 10px; font-size: 13px; gap: 5px; }
 .btn.sm .ic { width: 14px; height: 14px; }
 #btn-review[aria-pressed="true"] { background: var(--primary); color: var(--on-primary); box-shadow: none; }
-/* 复核栏两行：第一行状态与保存等操作，第二行框类型、删除所选与完成复核。桌面与平板相同，手机另排（见下） */
-.review-bar { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 6px 6px 6px 10px; margin: 0 0 12px; border-radius: 10px; background: var(--canvas-soft); box-shadow: var(--ring); font-size: 13px; }
+/* 复核栏一行（桌面与平板）：状态 → 框类型、删除所选 → 快捷键、更多、完成复核 → 放弃修改、保存；手机另排（见下） */
+.review-bar { position: relative; display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 8px; margin: 0 0 12px; border-radius: 10px; background: var(--canvas-soft); box-shadow: var(--ring); font-size: 13px; }
 .review-bar[hidden] { display: none; }
-.rv-row { display: flex; align-items: center; gap: 8px 12px; min-width: 0; }
-.rv-row2 { flex-wrap: wrap; gap: 6px; padding-top: 6px; border-top: 1px solid var(--hairline); }
-.rv-break { flex: 1; }
-.rv-status { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; }
+.rv-row { display: contents; }
+.rv-break { flex: 1 1 0; min-width: 0; }
+.rv-status { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; margin-right: 6px; }
 .rv-mode { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px 0 6px; border-radius: 9999px; font-size: 12px; font-weight: 500; white-space: nowrap; flex: none; cursor: help;
   color: var(--link-deep); background: color-mix(in srgb, var(--link) 12%, transparent); }
 .rv-mode .ic { width: 13px; height: 13px; }
@@ -363,7 +362,7 @@ textarea:focus, input[type=password]:focus, select:focus { outline: none; box-sh
 .icon-btn.sm .ic { width: 15px; height: 15px; }
 .icon-btn[aria-expanded="true"] { background: var(--canvas-soft-2); box-shadow: 0 0 0 1px var(--hairline-strong); }
 .rv-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--hairline); }
-#rv-del { margin-left: 2px; }
+
 /* 快捷键卡片与“更多”菜单：挂在复核栏右下 */
 .rv-pop { position: absolute; top: calc(100% + 6px); right: 6px; z-index: 50; padding: 10px 12px; border-radius: 10px; background: var(--canvas); box-shadow: var(--e5); font-size: 12.5px; max-width: min(380px, calc(100vw - 32px)); animation: dd-in .12s ease-out; }
 .rv-pop[hidden] { display: none; }
@@ -380,13 +379,23 @@ kbd { display: inline-block; min-width: 18px; padding: 1px 5px; border-radius: 4
 .rv-menu button span { display: grid; gap: 2px; }
 .rv-menu small { color: var(--mute); font-size: 12px; line-height: 16px; }
 /* 平板竖屏等中等宽度：收窄框类型下拉，保存按钮只写“保存”，让第二行放得下 */
-@media (max-width: 1100px) { .rv-type .dd-trigger { width: 132px; } }
-@media (max-width: 900px) { .rv-long { display: none; } }
+/* 按复核栏自身的宽度逐级收起（有无侧栏时栏宽不同，不能按窗口宽度判断）：先收提示，再把模式标签缩成图标、收窄框类型，
+   最窄时隐藏“新框类型”字样，完成复核只留图标，保存只写“保存” */
+.review-bar { container-type: inline-size; }
+@container (max-width: 960px) { .rv-hint { display: none; } }
+@container (max-width: 860px) {
+  .rv-type .dd-trigger { width: 132px; }
+  .rv-mode { padding: 0 5px; } .rv-mode #rv-mode-text { display: none; }
+}
+@container (max-width: 740px) {
+  .rv-long { display: none; }
+  #rv-type-label { display: none; }
+  #rv-finish { padding: 0; width: 28px; } #rv-finish .rv-fin-text { display: none; }
+}
 /* 手机：第二行框类型（占满）与快捷键、更多两个图标；第三行删除所选、放弃修改、保存；完成复核单独一行 */
 @media (max-width: 640px) {
   .review-bar { flex-direction: row; flex-wrap: wrap; padding: 8px; gap: 8px; }
   .rv-row { display: contents; }
-  .rv-row2 { padding-top: 0; border-top: 0; }
   .rv-status { order: 1; flex-basis: 100%; }
   .rv-type { order: 2; flex: 1 1 0; min-width: 0; }
   .rv-type .dd-trigger { flex: 1; width: auto; min-width: 0; }
@@ -395,6 +404,9 @@ kbd { display: inline-block; min-width: 18px; padding: 1px 5px; border-radius: 4
   #rv-del { order: 6; margin-left: 0; } #rv-cancel { order: 7; }
   #rv-save { order: 8; flex: 1; min-width: 0; }
   .rv-long { display: inline; }
+  #rv-type-label, .rv-mode #rv-mode-text, .rv-hint, #rv-finish .rv-fin-text { display: revert; }
+  .rv-mode { padding: 0 8px 0 6px; }
+  #rv-finish { width: auto; padding: 0 10px; }
   .rv-break { order: 9; flex-basis: 100%; height: 0; }
   .review-bar:has(#rv-finish[hidden]) .rv-break { display: none; }
   #rv-finish { order: 10; flex: 1; }

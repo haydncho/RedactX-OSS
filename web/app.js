@@ -469,7 +469,8 @@
     mode.classList.toggle("locked", !ed);
     mode.querySelector("use").setAttribute("href", ed ? "#i-edit" : "#i-lock");
     $("#rv-mode-text").textContent = ed ? "可删改" : "只能加框";
-    mode.title = ed ? "提交时开启了“保留原件以便复核”：可以加框、删框、改框。复核完成或到期后删除保留的页面。" : lockReason();
+    mode.title = (ed ? "可删改：提交时开启了“保留原件以便复核”，可以加框、删框、改框。复核完成或到期后删除保留的页面。" : `只能加框：${lockReason()}`)
+      + (ed ? "\n操作：拖动画框，点选框可编辑。" : "\n操作：拖动画新框。");
     $("#rv-hint").textContent = ed ? "拖动画框，点选框可编辑" : "拖动画新框";
     const canDel = !!(sel && canEdit(sel));
     $("#rv-del").setAttribute("aria-disabled", String(!canDel));
@@ -478,7 +479,8 @@
     const pages = changedPages(), st = changeStats();
     const parts = [st.added && `新增 ${st.added}`, st.removed && `删除 ${st.removed}`, st.edited && `改动 ${st.edited}`].filter(Boolean);
     const d = $("#rv-dirty");
-    d.textContent = dirty ? `未保存：${parts.join("、")} 个框${pages.size > 1 ? `（${pages.size} 页）` : ""}` : "没有修改";
+    d.textContent = dirty ? `未保存 ${dirty} 处` : "没有修改";
+    d.title = dirty ? `未保存：${parts.join("、")} 个框，涉及 ${pages.size} 页` : "";
     d.classList.toggle("on", !!dirty);
     document.querySelectorAll(".thumb").forEach((t, i) => t.classList.toggle("edited", pages.has(i + 1)));
     // 选中框时，类型下拉框显示并可修改它的类型
