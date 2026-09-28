@@ -423,6 +423,8 @@ kbd { display: inline-block; min-width: 18px; padding: 1px 5px; border-radius: 4
 }
 @media (max-width: 380px) { .rv-long { display: none; } }  /* 很窄的手机上保存按钮只写“保存” */
 .btn:disabled { opacity: .4; cursor: default; }
+.btn[aria-busy="true"] { cursor: progress; opacity: .85; }
+.dl-text { font-variant-numeric: tabular-nums; }
 .stage.reviewing .boxes { pointer-events: auto; cursor: crosshair; }
 .stage.reviewing .box { cursor: pointer; background: color-mix(in srgb, var(--bc, var(--link)) 14%, transparent); }
 .stage.reviewing .box.edit { cursor: move; }
@@ -537,6 +539,8 @@ kbd { display: inline-block; min-width: 18px; padding: 1px 5px; border-radius: 4
 .status.failed { background: var(--error-soft); color: var(--error-deep); }
 .history button { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; background: none; border: 0; color: var(--ink); cursor: pointer; font-size: 13px; font-weight: 500; padding: 4px 8px; border-radius: 6px; justify-self: end; }
 .history button:hover { background: var(--canvas-soft-2); }
+.history button.danger { color: var(--error); }
+.history button.danger:hover { background: var(--error-soft); }
 
 dialog { border: 0; border-radius: 12px; background: var(--canvas); color: var(--ink); padding: 24px; width: min(400px, 92vw); box-shadow: var(--e5); }
 dialog::backdrop { background: rgba(0, 0, 0, .3); backdrop-filter: blur(2px); }

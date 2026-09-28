@@ -152,7 +152,7 @@ deploy/keys.sh jobs clear --yes               # 清空全部任务
 | `REDACTX_RETENTION_HOURS` | `24` | 结果默认保留时长 |
 | `REDACTX_WORKERS` | `1` | 并行任务数（16 GB 内存建议 1） |
 | `REDACTX_PAGE_WORKERS` | `2` | 单个任务内同时打码、自检的页数；每多一页内存峰值约多 0.5 GB，设为 1 时最省内存 |
-| `REDACTX_MAX_UPLOAD_MB` | `50` | 单个文件上传上限（MB） |
+| `REDACTX_MAX_UPLOAD_MB` | `30` | 单个文件上传上限（MB） |
 | `REDACTX_API_KEY` | 无 | 管理员 Key，设置后启用 API Key 校验；用户 Key 用 `deploy/keys.sh` 生成 |
 | `REDACTX_REQUIRE_SANDBOX` | 无 | 设为 `1` 时，无法为文档转换创建沙箱就拒绝转换 Word 等文档（默认退回直接运行并记警告） |
 

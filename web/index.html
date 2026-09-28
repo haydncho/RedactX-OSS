@@ -150,7 +150,7 @@
       <div class="drop-text">
         <span class="eyebrow">DROP · UPLOAD · REDACT</span>
         <h1>把文档拖到这里。</h1>
-        <p>支持 PDF 与图片（JPG、PNG、TIFF），Word（doc、docx）、WPS、RTF、ODT、Excel、PPT、Markdown 和纯文本。扫描件、系统导出件、混合 PDF 都可以。单个文件不超过 <span id="max-mb" class="num">50</span> MB。</p>
+        <p>支持 PDF 与图片（JPG、PNG、TIFF），Word（doc、docx）、WPS、RTF、ODT、Excel、PPT、Markdown 和纯文本。扫描件、系统导出件、混合 PDF 都可以。单个文件不超过 <span id="max-mb" class="num">30</span> MB。</p>
         <div class="cta-row"><label for="file" id="pick" class="btn primary lg" role="button" tabindex="0"><svg class="ic" aria-hidden="true"><use href="#i-upload"/></svg>选择文件</label><button type="button" id="pick-img" class="btn lg touch-only" aria-haspopup="dialog"><svg class="ic" aria-hidden="true"><use href="#i-camera"/></svg>照片/图片</button><span class="cta-hint">或直接拖入，也可以拖到页面任意位置</span></div>
         <div class="formats" aria-hidden="true"><span>PDF</span><span>JPG</span><span>PNG</span><span>TIFF</span><span>DOC</span><span>DOCX</span><span>WPS</span><span>RTF</span><span>XLSX</span><span>PPTX</span><span>MD</span><span>TXT</span></div>
         <p class="drop-note">文件只在本机处理。原文件名（常含患者姓名）随任务保存在本机服务里，只有提交它的 API Key 能看到，任务到期或删除时一并删除。Word、WPS 等文档先在本机转成 PDF 再脱敏，输出为 PDF。上传的原文件处理完立即删除；供“对比”查看的原件预览图（缩小版）与脱敏结果一起保留，按“结果保留”时长自动清除。勾选“保留原件以便复核”时另存打码前的全尺寸页面，复核完成或到期后删除。</p>
@@ -169,7 +169,7 @@
         <div class="job-actions">
           <button type="button" class="btn ghost" id="btn-new"><svg class="ic" aria-hidden="true"><use href="#i-file-plus"/></svg>处理新文件</button>
           <button type="button" class="btn ghost danger" id="btn-delete" hidden><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>删除结果</button>
-          <a class="btn primary" id="btn-download" hidden><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>下载脱敏文件</a>
+          <a class="btn primary" id="btn-download" hidden><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span class="dl-text">下载脱敏文件</span></a>
         </div>
       </div>
 

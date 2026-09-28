@@ -36,7 +36,7 @@
   let typeFilter = null;
   const blobCache = new Map();
   let rev = 0;             // 复核保存后递增，让预览图重新加载
-  let maxUploadMB = 50;    // 单个文件上传上限，启动时以 /v1/health 返回的为准
+  let maxUploadMB = 30;    // 单个文件上传上限，启动时以 /v1/health 返回的为准
 
   // ---------- 接口 ----------
   function headers() {
@@ -72,13 +72,42 @@
     return url;
   }
   // 带 API Key 请求头下载文件（链接下载带不上请求头）；失败时提示
-  async function downloadBlob(path, name) {
+  // 带 API Key 下载：边收边显示进度（脱敏文件常有几十 MB，经隧道等慢速网络要下好几分钟，不能没有反馈）
+  async function downloadBlob(path, name, btn) {
+    const label = btn?.querySelector(".dl-text"), text0 = label?.textContent;
+    const show = (t) => { if (label) label.textContent = t; };
+    if (btn) { if (btn.getAttribute("aria-busy") === "true") return; btn.setAttribute("aria-busy", "true"); }
     try {
-      const url = URL.createObjectURL(await (await api(path)).blob());
+      const r = await api(path);
+      const total = Number(r.headers.get("content-length")) || 0;
+      let blob;
+      if (r.body && total && label) {
+        const reader = r.body.getReader(), parts = [];
+        let got = 0;
+        show("下载中 0%");
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          parts.push(value); got += value.length;
+          show(`下载中 ${Math.min(99, Math.floor(100 * got / total))}%`);
+        }
+        blob = new Blob(parts, { type: r.headers.get("content-type") || "application/octet-stream" });
+      } else {
+        show("下载中…");
+        blob = await r.blob();
+      }
+      const url = URL.createObjectURL(blob);
       const a = el("a", { href: url, download: name });
       document.body.append(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
-    } catch (e) { toast(e.message); }
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (e) { toast(e.message || "下载失败，请重试"); }
+    finally { show(text0); btn?.removeAttribute("aria-busy"); }
+  }
+  // 下载文件名：原文件名加“-脱敏”，没有原文件名时用任务编号
+  function resultName() {
+    const ext = report.output.split(".").pop();
+    const stem = (job.name || "").replace(/\.[^.]+$/, "").replace(/[\\/:*?"<>|]+/g, "_").trim();
+    return stem ? `${stem}-脱敏.${ext}` : `redacted-${job.id}.${ext}`;
   }
   // 焦点在输入框、下拉框里时，快捷键让给输入
   const typing = () => /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName);
@@ -304,10 +333,11 @@
     const dl = $("#btn-download");
     dl.hidden = false;
     dl.href = `/v1/jobs/${job.id}/result`;
+    dl.download = resultName();
     dl.onclick = async (ev) => {
-      if (!store.get(KEY_KEY, "")) return; // 无 Key 时直接走链接下载
+      if (!store.get(KEY_KEY, "")) return; // 无 Key 时直接走链接下载（浏览器自己显示进度）
       ev.preventDefault();
-      downloadBlob(`/v1/jobs/${job.id}/result`, `redacted-${job.id}.${report.output.split(".").pop()}`);
+      downloadBlob(`/v1/jobs/${job.id}/result`, resultName(), dl);
     };
     $("#btn-delete").hidden = false;
     $("#btn-review").hidden = false;
@@ -917,12 +947,23 @@
             el("span", { class: "hist-name", text: j.name || jobNames.get(j.id) || `任务 ${j.id.slice(4, 12)}`, title: j.name || jobNames.get(j.id) || "较早的任务没有记录文件名" }),
             el("span", { class: "hist-meta", text: `${(j.input_ext || "").toUpperCase()} · ${j.pages ?? "?"} 页${total != null ? ` · 遮盖 ${total} 处` : ""}` })),
           el("span", { class: `status ${j.status}`, text: ST[j.status] || j.status }),
-          j.status === "succeeded" ? el("button", { type: "button", onclick: () => openJob(j.id, j.input_ext, j.name) }, icon("eye"), "查看") : el("span")));
+          j.status === "succeeded" ? el("button", { type: "button", onclick: () => openJob(j.id, j.input_ext, j.name) }, icon("eye"), "查看")
+            // 失败的任务没有结果可看：直接删掉（不删也会在保留时长到期后自动清除）
+            : j.status === "failed" ? el("button", { type: "button", class: "danger", title: `删除这个失败的任务${j.error ? `（${j.error}）` : ""}`, onclick: () => deleteFailed(j.id) }, icon("trash"), "删除")
+            : el("span")));
       }
     } catch (e) {
       $("#history").replaceChildren(); $("#history").setAttribute("aria-busy", "false"); $("#history-wrap").hidden = true;
       if (e.status === 401) toast("需要 API Key，请点右上角设置");
     }
+  }
+
+  async function deleteFailed(id) {
+    try { await api(`/v1/jobs/${id}`, { method: "DELETE" }); } catch (e) { if (e.status !== 404) { toast(e.message); return; } }
+    jobNames.drop(id);
+    if (job?.id === id) $("#btn-new").click();  // 正在显示的就是这个失败任务：回到上传页
+    toast("已删除失败的任务");
+    refreshHistory();
   }
 
   async function openJob(id, ext, name) {

@@ -174,7 +174,7 @@ class JobStore:
 
     def list(self, limit: int = 30, owner: str | None = None) -> list[dict]:
         """owner 为 None 时列出全部（管理员），否则只列该 Key 提交的任务。"""
-        cols = "id,status,created,pages,progress,message,summary,input_ext,name"
+        cols = "id,status,created,pages,progress,message,summary,input_ext,name,error"
         with self._conn() as c:
             if owner is None:
                 rows = c.execute(f"SELECT {cols} FROM jobs ORDER BY created DESC LIMIT ?", (limit,)).fetchall()
