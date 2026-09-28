@@ -247,11 +247,11 @@ async def create_job(
     tmp, ext = await save_upload(file)
     pages = await check_pages(tmp, opts.password)
     hours = settings.retention_hours if retention_hours is None else max(0.1, min(float(retention_hours), 24 * 7))
-    job_id = store.create(tmp, ext, opts, hours, pages or None, owner=who.id)
+    job_id = store.create(tmp, ext, opts, hours, pages or None, owner=who.id, name=file.filename)
     return {"job_id": job_id, "pages": pages or None, "status": "queued"}
 
 
-@app.get("/v1/jobs", tags=["任务"], summary="最近任务", description="按提交时间倒序，只列当前 API Key 提交的任务（管理员 Key 列出全部）。不含原文件名。")
+@app.get("/v1/jobs", tags=["任务"], summary="最近任务", description="按提交时间倒序，只列当前 API Key 提交的任务（管理员 Key 列出全部）。name 为上传时的原文件名（旧任务可能为空），随任务到期或删除一并删除。")
 def list_jobs(limit: int = Query(30, description="返回条数，1–100"), who: Principal = Depends(auth)):
     return store.list(min(max(limit, 1), 100), owner=None if who.admin else who.id)
 

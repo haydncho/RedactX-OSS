@@ -144,3 +144,40 @@ def test_local_mode_without_any_key(env, monkeypatch):
     c, _, _, _ = env
     monkeypatch.setattr(app_mod.settings, "api_key", None)
     assert c.get("/v1/jobs").status_code == 200  # 没设管理员 Key、也没生成用户 Key：本机模式
+
+
+def test_file_name_kept_per_key_and_dropped_with_job(env):
+    # 原文件名随任务存在服务端，各设备都能在“最近任务”里看到；只给提交它的 Key，删除任务时一并删除
+    c, store, keys, _ = env
+    _, ka = keys.create("甲")
+    _, kb = keys.create("乙")
+    r = c.post("/v1/jobs", files={"file": ("C:\\病案\\张三-住院.png", _png(), "image/png")}, headers={"X-API-Key": ka})
+    ja = r.json()["job_id"]
+    H = lambda k: {"X-API-Key": k}  # noqa: E731
+    assert [j["name"] for j in c.get("/v1/jobs", headers=H(ka)).json()] == ["张三-住院.png"]  # 去掉客户端路径
+    assert c.get(f"/v1/jobs/{ja}", headers=H(ka)).json()["name"] == "张三-住院.png"
+    assert c.get("/v1/jobs", headers=H(kb)).json() == []
+    store.delete(ja)  # 到期清理与删除接口都走这里（排队中的任务接口不让删）
+    with store._conn() as db:
+        assert db.execute("SELECT COUNT(*) FROM jobs WHERE name IS NOT NULL").fetchone()[0] == 0
+
+
+def test_clean_name():
+    from service.jobs import clean_name
+
+    assert clean_name("/tmp/a/b.pdf") == "b.pdf"
+    assert clean_name("x\u0000\u200by.pdf") == "xy.pdf"
+    assert clean_name("") is None and clean_name(None) is None
+    assert len(clean_name("长" * 500)) == 200
+
+
+def test_old_db_gets_name_column(tmp_path):
+    from service.jobs import JobStore
+
+    with sqlite3.connect(tmp_path / "jobs.sqlite3") as db:  # 没有 name 列的旧库
+        db.execute("CREATE TABLE jobs (id TEXT PRIMARY KEY, status TEXT NOT NULL, created REAL NOT NULL, updated REAL NOT NULL, "
+                   "expires REAL NOT NULL, input_ext TEXT, pages INTEGER, progress REAL DEFAULT 0, message TEXT, error_code TEXT, "
+                   "error TEXT, options TEXT, summary TEXT, owner TEXT)")
+    store = JobStore(tmp_path)
+    with store._conn() as db:
+        assert "name" in {r[1] for r in db.execute("PRAGMA table_info(jobs)")}

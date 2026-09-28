@@ -914,10 +914,10 @@
         ul.append(el("li", {},
           el("span", { class: "when num", text: when }),
           el("div", { class: "hist-main" },
-            el("span", { class: "hist-name", text: jobNames.get(j.id) || `任务 ${j.id.slice(4, 12)}`, title: jobNames.get(j.id) || "文件名只保存在提交它的浏览器里" }),
+            el("span", { class: "hist-name", text: j.name || jobNames.get(j.id) || `任务 ${j.id.slice(4, 12)}`, title: j.name || jobNames.get(j.id) || "较早的任务没有记录文件名" }),
             el("span", { class: "hist-meta", text: `${(j.input_ext || "").toUpperCase()} · ${j.pages ?? "?"} 页${total != null ? ` · 遮盖 ${total} 处` : ""}` })),
           el("span", { class: `status ${j.status}`, text: ST[j.status] || j.status }),
-          j.status === "succeeded" ? el("button", { type: "button", onclick: () => openJob(j.id, j.input_ext) }, icon("eye"), "查看") : el("span")));
+          j.status === "succeeded" ? el("button", { type: "button", onclick: () => openJob(j.id, j.input_ext, j.name) }, icon("eye"), "查看") : el("span")));
       }
     } catch (e) {
       $("#history").replaceChildren(); $("#history").setAttribute("aria-busy", "false"); $("#history-wrap").hidden = true;
@@ -925,8 +925,8 @@
     }
   }
 
-  async function openJob(id, ext) {
-    job = { id, name: jobNames.get(id) || `任务 ${id.slice(4, 12)}`, kind: (ext || "").toUpperCase() };
+  async function openJob(id, ext, name) {
+    job = { id, name: name || jobNames.get(id) || `任务 ${id.slice(4, 12)}`, kind: (ext || "").toUpperCase() };
     clearBlobs(); beforePage = 0; typeFilter = null;
     showJob();
     showResultSkeleton();

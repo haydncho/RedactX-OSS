@@ -1,7 +1,7 @@
 """任务存储与后台执行。
 
 - 任务元数据存 SQLite；文件存本地数据目录，每个任务一个子目录。
-- 不保存原文件名（常含患者姓名），只保存扩展名与页数。
+- 原文件名（常含患者姓名）只存在任务元数据里，供“最近任务”在各设备上显示；只返回给提交它的 Key，不写日志，任务到期或删除时随元数据一并删除。
 - 上传的原文件处理完即删除；原件预览图（缩小版，供对比查看）与结果一起保留到期；选择“保留原件以便复核”的任务另存打码前的页面，复核完成或到期时删除。
 - 后台线程串行处理任务（16 GB 内存的本机上避免同时加载多份模型），到期自动删除。
 """
@@ -42,9 +42,19 @@ CREATE TABLE IF NOT EXISTS jobs (
   error TEXT,
   options TEXT,
   summary TEXT,
-  owner TEXT
+  owner TEXT,
+  name TEXT
 )
 """
+
+
+def clean_name(name: str | None) -> str | None:
+    """上传时的原文件名：只取最后一段（去掉客户端路径），去掉控制字符，最长 200 字。"""
+    if not name:
+        return None
+    base = re.split(r"[\\/]", name)[-1]
+    base = "".join(ch for ch in base if ch.isprintable()).strip()
+    return base[:200] or None
 
 
 # 任务 ID：job_ 加 20 位小写字母数字（生成时用 uuid4 的十六进制）
@@ -59,8 +69,12 @@ class JobStore:
         with self._conn() as c:
             c.execute(_SCHEMA)
             # 旧库没有 owner 列：补上（旧任务无归属，只有管理员可见）
-            if "owner" not in {r[1] for r in c.execute("PRAGMA table_info(jobs)")}:
+            cols = {r[1] for r in c.execute("PRAGMA table_info(jobs)")}
+            if "owner" not in cols:
                 c.execute("ALTER TABLE jobs ADD COLUMN owner TEXT")
+            # 旧库没有 name 列：补上（旧任务没有文件名，网页上显示本浏览器记下的名字或任务编号）
+            if "name" not in cols:
+                c.execute("ALTER TABLE jobs ADD COLUMN name TEXT")
             # 服务重启时，未完成的任务标记为失败
             c.execute("UPDATE jobs SET status='failed', error_code='INTERRUPTED', error='服务重启，任务中断，请重新提交' WHERE status IN ('queued','running')")
         self.pool = ThreadPoolExecutor(max_workers=max(1, settings.workers), thread_name_prefix="redact")
@@ -79,7 +93,7 @@ class JobStore:
         return self.root / "jobs" / job_id
 
     def create(self, src_bytes_path: Path, ext: str, opts: Options, retention_hours: float, pages: int | None = None,
-               owner: str | None = None) -> str:
+               owner: str | None = None, name: str | None = None) -> str:
         job_id = "job_" + uuid.uuid4().hex[:20]
         d = self.dir(job_id)
         (d / "in").mkdir(parents=True)
@@ -92,8 +106,8 @@ class JobStore:
         opt_json = json.dumps(saved, ensure_ascii=False)
         with self._lock, self._conn() as c:
             c.execute(
-                "INSERT INTO jobs (id,status,created,updated,expires,input_ext,pages,progress,message,options,owner) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                (job_id, "queued", now, now, now + retention_hours * 3600, ext, pages, 0, "排队中", opt_json, owner),
+                "INSERT INTO jobs (id,status,created,updated,expires,input_ext,pages,progress,message,options,owner,name) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (job_id, "queued", now, now, now + retention_hours * 3600, ext, pages, 0, "排队中", opt_json, owner, clean_name(name)),
             )
         self.pool.submit(self._execute, job_id, dst, opts)
         return job_id
@@ -160,7 +174,7 @@ class JobStore:
 
     def list(self, limit: int = 30, owner: str | None = None) -> list[dict]:
         """owner 为 None 时列出全部（管理员），否则只列该 Key 提交的任务。"""
-        cols = "id,status,created,pages,progress,message,summary,input_ext"
+        cols = "id,status,created,pages,progress,message,summary,input_ext,name"
         with self._conn() as c:
             if owner is None:
                 rows = c.execute(f"SELECT {cols} FROM jobs ORDER BY created DESC LIMIT ?", (limit,)).fetchall()
