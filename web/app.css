@@ -342,9 +342,9 @@ textarea:focus, input[type=password]:focus, select:focus { outline: none; box-sh
 .review-bar { position: relative; display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 8px; margin: 0 0 12px; border-radius: 10px; background: var(--canvas-soft); box-shadow: var(--ring); font-size: 13px; }
 .review-bar[hidden] { display: none; }
 .rv-row { display: contents; }
-/* 状态占据剩余空间，按钮都靠右排在一起；rv-break 在桌面上是分组的细竖线，手机上用作换行 */
+/* rv-break 在桌面上是分组的细竖线，手机上用作换行 */
 .rv-break { flex: none; width: 1px; height: 18px; margin: 0 4px; background: var(--hairline); }
-.rv-status { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; margin-right: 6px; }
+.rv-status { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; margin-right: 6px; }
 .rv-mode { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px 0 6px; border-radius: 9999px; font-size: 12px; font-weight: 500; white-space: nowrap; flex: none; cursor: help;
   color: var(--link-deep); background: color-mix(in srgb, var(--link) 12%, transparent); }
 .rv-mode .ic { width: 13px; height: 13px; }
@@ -357,6 +357,10 @@ textarea:focus, input[type=password]:focus, select:focus { outline: none; box-sh
 .rv-hint:has(+ .rv-dirty.on) { display: none; }  /* 有未保存的修改时只显示修改数，腾出位置 */
 .rv-type { display: inline-flex; align-items: center; gap: 6px; color: var(--body); white-space: nowrap; }
 .rv-type .dd-trigger { height: 28px; width: 160px; }
+/* 桌面与平板：框类型与按钮铺满整行，下拉占的份额大一些，四个按钮平分其余宽度（不窄于自身文字） */
+.rv-type { flex: 2 1 0; min-width: min-content; }
+.rv-type .dd-trigger { flex: 1; width: auto; min-width: 170px; }
+#rv-del, #rv-finish, #rv-cancel, #rv-save { flex: 1 1 0; }
 .btn[aria-disabled="true"] { opacity: .4; cursor: not-allowed; }
 .btn.danger[aria-disabled="true"]:hover { background: var(--canvas); }
 .icon-btn.sm { width: 28px; height: 28px; border-radius: 6px; }
@@ -384,15 +388,15 @@ kbd { display: inline-block; min-width: 18px; padding: 1px 5px; border-radius: 4
 /* 按复核栏自身的宽度逐级收起（有无侧栏时栏宽不同，不能按窗口宽度判断）：先收提示，再把模式标签缩成图标、收窄框类型，
    最窄时隐藏“新框类型”字样，完成复核只留图标，保存只写“保存” */
 .review-bar { container-type: inline-size; }
-@container (max-width: 960px) { .rv-hint { display: none; } }
+@container (max-width: 960px) { .rv-hint, #rv-type-label { display: none; } .rv-type .dd-trigger { min-width: 190px; } }
 @container (max-width: 860px) {
-  .rv-type .dd-trigger { width: 132px; }
+  .rv-type .dd-trigger { min-width: 150px; }
   .rv-mode { padding: 0 5px; } .rv-mode #rv-mode-text { display: none; }
 }
 @container (max-width: 740px) {
   .rv-long { display: none; }
-  #rv-type-label { display: none; }
-  #rv-finish { padding: 0; width: 28px; } #rv-finish .rv-fin-text { display: none; }
+  .rv-type .dd-trigger { min-width: 120px; }
+  #rv-finish { flex: none; padding: 0; width: 28px; } #rv-finish .rv-fin-text { display: none; }
 }
 /* 手机：第二行框类型（占满）与快捷键、更多两个图标；第三行删除所选、放弃修改、保存；完成复核单独一行 */
 @media (max-width: 640px) {
@@ -403,7 +407,7 @@ kbd { display: inline-block; min-width: 18px; padding: 1px 5px; border-radius: 4
   .rv-type .dd-trigger { flex: 1; width: auto; min-width: 0; }
   #rv-keys { order: 3; margin-left: 0; } #rv-more { order: 4; }
   .rv-sep { order: 5; flex-basis: 100%; width: auto; height: 0; margin: 0; }
-  #rv-del { order: 6; margin-left: 0; } #rv-cancel { order: 7; }
+  #rv-del { order: 6; margin-left: 0; flex: none; } #rv-cancel { order: 7; flex: none; }
   #rv-save { order: 8; flex: 1; min-width: 0; }
   .rv-long { display: inline; }
   #rv-type-label, .rv-mode #rv-mode-text, .rv-hint, #rv-finish .rv-fin-text { display: revert; }

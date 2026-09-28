@@ -488,6 +488,9 @@
     if (sel && [...ty.options].some((o) => o.value === sel.type)) ty.value = sel.type;
     else if (!sel && [...ty.options].some((o) => o.value === state.rv_type)) ty.value = state.rv_type;
     $("#rv-type-label").textContent = sel && canEdit(sel) ? "所选框类型" : "新框类型";
+    // 较窄时“新框类型”字样收起：下拉框的提示说明它现在改的是哪一个
+    const trig = ty._dd?.trigger;
+    if (trig) trig.title = sel && canEdit(sel) ? "所选框的类型" : "新画的框的类型";
     // “更多”菜单：导出标注、完成复核（都只对保留了打码前页面的任务有效）
     $("#rv-finish").hidden = !ed;
     $("#rv-export").hidden = !(exportEnabled && ed);
