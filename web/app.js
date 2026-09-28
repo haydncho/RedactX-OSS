@@ -491,7 +491,8 @@
     $("#rv-export").hidden = !(exportEnabled && ed);
     $("#rv-export").disabled = !!dirty;
     $("#rv-export").querySelector("small").textContent = dirty ? "先保存修改再导出" : "打码前的原始页面与复核后的框（COCO 格式），供训练检测模型；含真实内容";
-    $("#rv-more-empty").hidden = ed;
+    $("#rv-more").hidden = $("#rv-export").hidden;
+    if ($("#rv-more").hidden && openPop?.btn === $("#rv-more")) closePops();
   }
 
   // 未保存的修改：按框计数（一个框挪了几次也只算一处改动）
@@ -518,6 +519,10 @@
     closePops();
     if (wasOpen) return;
     pop.hidden = false; btn.setAttribute("aria-expanded", "true"); openPop = { btn, pop };
+    // 贴在按钮下方、与按钮右边对齐（复核栏有两行，不能固定挂在栏底）
+    const bar = $("#review-bar").getBoundingClientRect(), r = btn.getBoundingClientRect();
+    pop.style.top = `${r.bottom - bar.top + 6}px`;
+    pop.style.right = `${Math.max(6, bar.right - r.right)}px`;
     pop.querySelector("button:not([hidden]):not(:disabled)")?.focus();
   }
 
@@ -614,7 +619,6 @@
       if (openPop && !openPop.pop.contains(e.target) && !openPop.btn.contains(e.target)) closePops();
     }, true);
     $("#rv-finish").onclick = async () => {
-      closePops();
       const ok = await UI.confirmDialog("将立即删除为复核保留的打码前页面。之后仍可加框，但不能再删框或改框。",
         { title: "完成复核？", ok: "完成并删除", icon: "check-all", okIcon: "check" });
       if (!ok || !job?.id) return;

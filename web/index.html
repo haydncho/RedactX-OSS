@@ -196,21 +196,25 @@
           </div>
         </div>
         <div class="review-bar" id="review-bar" hidden>
-          <div class="rv-status">
-            <span class="rv-mode" id="rv-mode" tabindex="0"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg><span id="rv-mode-text">可删改</span></span>
-            <span class="rv-hint" id="rv-hint"></span>
-            <span class="rv-dirty" id="rv-dirty" aria-live="polite"></span>
+          <div class="rv-row">
+            <div class="rv-status">
+              <span class="rv-mode" id="rv-mode" tabindex="0"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg><span id="rv-mode-text">可删改</span></span>
+              <span class="rv-hint" id="rv-hint"></span>
+              <span class="rv-dirty" id="rv-dirty" aria-live="polite"></span>
+            </div>
+            <div class="rv-actions">
+              <button type="button" class="icon-btn sm" id="rv-keys" aria-label="快捷键" aria-haspopup="dialog" aria-expanded="false" title="快捷键"><svg class="ic" aria-hidden="true"><use href="#i-keyboard"/></svg></button>
+              <button type="button" class="icon-btn sm" id="rv-more" aria-label="更多操作" aria-haspopup="menu" aria-expanded="false" title="更多操作"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg></button>
+              <span class="rv-sep" aria-hidden="true"></span>
+              <button type="button" class="btn ghost sm" id="rv-cancel"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>放弃修改</button>
+              <button type="button" class="btn primary sm" id="rv-save" aria-label="保存并重新打码" disabled><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span>保存<span class="rv-long">并重新打码</span></span></button>
+            </div>
           </div>
-          <div class="rv-tools">
+          <div class="rv-row rv-row2">
             <label class="rv-type"><span id="rv-type-label">新框类型</span><select id="rv-type"></select></label>
             <button type="button" class="btn ghost sm danger" id="rv-del" aria-disabled="true"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>删除所选</button>
-          </div>
-          <div class="rv-actions">
-            <button type="button" class="icon-btn sm" id="rv-keys" aria-label="快捷键" aria-haspopup="dialog" aria-expanded="false" title="快捷键"><svg class="ic" aria-hidden="true"><use href="#i-keyboard"/></svg></button>
-            <button type="button" class="icon-btn sm" id="rv-more" aria-label="更多操作" aria-haspopup="menu" aria-expanded="false" title="更多操作"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg></button>
-            <span class="rv-sep" aria-hidden="true"></span>
-            <button type="button" class="btn ghost sm" id="rv-cancel"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>放弃修改</button>
-            <button type="button" class="btn primary sm" id="rv-save" aria-label="保存并重新打码" disabled><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>保存<span class="rv-long">并重新打码</span></button>
+            <span class="rv-break" aria-hidden="true"></span>
+            <button type="button" class="btn ghost sm" id="rv-finish" hidden title="删除为复核保留的打码前页面；之后只能加框，不能再删框、改框"><svg class="ic" aria-hidden="true"><use href="#i-check-all"/></svg>完成复核</button>
           </div>
           <div class="rv-pop" id="rv-keys-pop" role="dialog" aria-label="复核快捷键" hidden>
             <dl class="kbd-list">
@@ -226,8 +230,6 @@
           </div>
           <div class="rv-pop rv-menu" id="rv-more-pop" role="menu" aria-label="更多操作" hidden>
             <button type="button" role="menuitem" id="rv-export" hidden><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span>导出标注<small>打码前的原始页面与复核后的框（COCO 格式），供训练检测模型；含真实内容</small></span></button>
-            <button type="button" role="menuitem" id="rv-finish" hidden><svg class="ic" aria-hidden="true"><use href="#i-check-all"/></svg><span>完成复核<small>删除为复核保留的打码前页面；之后只能加框</small></span></button>
-            <p class="rv-menu-empty" id="rv-more-empty">这个任务没有保留打码前的页面，没有其他操作。</p>
           </div>
         </div>
         <div class="viewer-wrap">
