@@ -431,5 +431,8 @@ def api_docs():
 
 
 @app.get("/", include_in_schema=False)
+@app.get("/app", include_in_schema=False)
+@app.get("/app/", include_in_schema=False)
 def index():
+    """控制台页。/app 供挂在介绍站同一域名下时使用（反向代理把 /app、/v1、/static、/docs、/openapi.json 转到本服务）。"""
     return FileResponse(WEB_DIR / "index.html", headers={"Cache-Control": "no-cache"})

@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- 部署：正式地址 https://redactx.toras.dev 。介绍站是 Pages 项目的自定义域名；控制台在 /app，由新增的 Worker（deploy/gateway）把 /app、/v1、/static、/docs、/openapi.json 转到本机服务的 Cloudflare 正式隧道（替代地址每次重启都会变、带宽也低的临时隧道；实测下载速度约为原来的 4–5 倍）。服务端 /app 也返回控制台页，接口文档的“返回控制台”改为 /app；介绍站“在线演示”改为 /app，deploy/site.sh 默认把 pages.dev 上的 /app 跳到正式地址。
 - 接口文档：手机等窄屏上表格内容不再折行，整张表在卡片内横向滚动查看。
 
 ## 0.2.6 — 2026-09-28

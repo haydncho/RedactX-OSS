@@ -1,0 +1,17 @@
+# 部署：npx wrangler@4 deploy --config deploy/gateway/wrangler.toml
+# redactx.toras.dev 本身是介绍站（Pages 项目 redactx-oss 的自定义域名）；这里只拦截控制台与接口的路径，转给本机服务
+name = "redactx-gateway"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+workers_dev = false
+routes = [
+  { pattern = "redactx.toras.dev/app*", zone_name = "toras.dev" },
+  { pattern = "redactx.toras.dev/v1/*", zone_name = "toras.dev" },
+  { pattern = "redactx.toras.dev/static/*", zone_name = "toras.dev" },
+  { pattern = "redactx.toras.dev/docs*", zone_name = "toras.dev" },
+  { pattern = "redactx.toras.dev/openapi.json", zone_name = "toras.dev" },
+]
+
+[vars]
+APP_ORIGIN = "https://app.toras.dev"         # 本机脱敏服务（正式隧道 redactx，见 ~/.cloudflared/config.yml）
+SITE_ORIGIN = "https://redactx-oss.pages.dev" # 介绍站（Cloudflare Pages 项目 redactx-oss）
