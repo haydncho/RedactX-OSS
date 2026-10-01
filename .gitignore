@@ -43,3 +43,6 @@ bench/train/
 train/runs/
 train/data/
 site/_redirects
+
+# Cloudflare wrangler（部署介绍站、网关时）生成的本地缓存
+.wrangler/
