@@ -1,0 +1,260 @@
+/* 锐消 RedactX — 使用向导。聚光框圈出页面上的真实区域，旁边一张液态玻璃卡片讲解：
+   玻璃是背景模糊提饱和、边缘亮圈与上沿高光，镜面反光随指针移动，卡片后面几团彩色光斑随卡片流动、透过玻璃折射出来；
+   聚光框与卡片按弹簧曲线移动（到位时略微回弹），进度点像水滴一样先拉长再收拢。减少动态效果时一律静止。 */
+
+/* 能插值的自定义属性：指针反光平滑跟随、聚光框彩色描边旋转。不支持 @property 的浏览器里只是不动 */
+@property --tour-mx { syntax: "<length-percentage>"; inherits: true; initial-value: 22%; }
+@property --tour-my { syntax: "<length-percentage>"; inherits: true; initial-value: -12%; }
+@property --tour-a { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+
+:root {
+  --tour-dim: rgba(9, 11, 22, .52);
+  --tour-glass: rgba(255, 255, 255, .6);
+  --tour-glass-2: rgba(255, 255, 255, .3);
+  --tour-edge: rgba(255, 255, 255, .8);
+  --tour-hi: rgba(255, 255, 255, .95);
+  --tour-spec: rgba(255, 255, 255, .55);
+  --tour-blob: .72;
+  --tour-ease: cubic-bezier(.2, .8, .2, 1);
+  --tour-spring: cubic-bezier(.34, 1.4, .64, 1);
+  --tour-soft: cubic-bezier(.3, 1.2, .5, 1);
+}
+/* 真实弹簧：阻尼振荡采样成 linear()，过冲约 12%（聚光框、卡片）与 5%（光斑、卡片高度） */
+@supports (transition-timing-function: linear(0, 1)) {
+  :root {
+    --tour-spring: linear(0, .054, .185, .357, .538, .708, .853, .967, 1.047, 1.097, 1.122, 1.126, 1.116, 1.098, 1.075, 1.053, 1.032, 1.015, 1.001, .992, .987, .984, .984, .986, .988, .991, .994, .997, 1);
+    --tour-soft: linear(0, .06, .201, .373, .546, .699, .824, .918, .984, 1.024, 1.046, 1.054, 1.053, 1.046, 1.037, 1.027, 1.019, 1.011, 1.006, 1.002, .999, .998, .997, .997, 1);
+  }
+}
+:root[data-theme="dark"] {
+  --tour-dim: rgba(0, 0, 0, .62);
+  --tour-glass: rgba(40, 40, 48, .62);
+  --tour-glass-2: rgba(22, 22, 28, .42);
+  --tour-edge: rgba(255, 255, 255, .16);
+  --tour-hi: rgba(255, 255, 255, .24);
+  --tour-spec: rgba(255, 255, 255, .1);
+  --tour-blob: .5;
+}
+
+/* 顶栏入口：悬停时罗盘转一下 */
+#btn-tour .ic { transition: transform .6s var(--tour-spring); }
+#btn-tour:hover .ic { transform: rotate(-40deg); }
+
+/* 当前圈出的区域滚进视野时，不被固定顶栏挡住 */
+.tour-target { scroll-margin: 84px 16px 24px; }
+@media (max-width: 1100px) { .tour-target { scroll-margin-top: 76px; } }
+
+/* 整个向导是一个铺满视口的透明模态框：页面其余部分不可操作，暗色遮罩由聚光框的投影画出 */
+dialog.tour { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0 0 env(safe-area-inset-bottom);
+  border: 0; border-radius: 0; background: transparent; box-shadow: none; overflow: hidden; color: var(--ink); outline: none; }
+dialog.tour::backdrop { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+/* 聚光框：本身透明露出下面的页面，外面一圈超大投影就是遮罩；没有目标时收成视口中心的一个点 */
+.tour-spot { position: absolute; left: 50%; top: 50%; width: 0; height: 0; border-radius: 16px; box-shadow: 0 0 0 200vmax var(--tour-dim); }
+.tour.glide .tour-spot { transition: left .7s var(--tour-spring), top .7s var(--tour-spring), width .7s var(--tour-spring), height .7s var(--tour-spring), border-radius .5s var(--tour-ease); }
+/* 玻璃镜框：内侧亮边与上沿高光像一片透镜，外侧一圈旋转的彩色描边与柔光 */
+.tour-ring { position: absolute; inset: 0; border-radius: inherit; transition: opacity .3s ease;
+  box-shadow: inset 0 0 0 1.5px var(--tour-edge), inset 0 2px 6px -2px rgba(255, 255, 255, .7), 0 0 0 1px rgba(255, 255, 255, .18), 0 0 36px 6px color-mix(in srgb, #7c3aed 32%, transparent); }
+.tour-ring::before { content: ""; position: absolute; inset: -2.5px; border-radius: inherit; padding: 2.5px; pointer-events: none; opacity: .95;
+  background: conic-gradient(from var(--tour-a), #0070f3, #7c3aed, #ec4899, #f59e0b, #29bc9b, #0070f3);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  animation: tour-spin 5s linear infinite; }
+@keyframes tour-spin { to { --tour-a: 360deg; } }
+/* 到位时向外荡开一圈水波 */
+.tour-ring::after { content: ""; position: absolute; inset: -2px; border-radius: inherit; pointer-events: none; opacity: 0; }
+.tour-spot.ping .tour-ring::after { animation: tour-ping .9s var(--tour-ease); }
+@keyframes tour-ping {
+  0% { opacity: 1; box-shadow: 0 0 0 0 color-mix(in srgb, #7c3aed 65%, transparent), 0 0 0 0 color-mix(in srgb, #0070f3 45%, transparent); }
+  100% { opacity: 0; box-shadow: 0 0 0 18px color-mix(in srgb, #7c3aed 0%, transparent), 0 0 0 34px color-mix(in srgb, #0070f3 0%, transparent); }
+}
+.tour-spot.none .tour-ring { opacity: 0; }
+
+/* 卡片后面的彩色光斑：跟着卡片走、比卡片慢半拍，形状缓慢变幻 */
+.tour-blobs { position: absolute; pointer-events: none; }
+.tour.glide .tour-blobs { transition: left 1s var(--tour-soft), top 1s var(--tour-soft), width 1s var(--tour-soft), height 1s var(--tour-soft); }
+.tour-blobs i { position: absolute; width: 52%; aspect-ratio: 1; opacity: var(--tour-blob); filter: blur(28px);
+  border-radius: 42% 58% 63% 37% / 41% 44% 56% 59%; animation: tour-morph 9s ease-in-out infinite; }
+.tour-blobs i:nth-child(1) { left: 2%; top: 0; background: #0070f3; }
+.tour-blobs i:nth-child(2) { right: 0; top: 14%; width: 46%; background: #7c3aed; animation-duration: 11s; animation-delay: -3s; }
+.tour-blobs i:nth-child(3) { left: 16%; bottom: 0; width: 44%; background: #ec4899; animation-duration: 13s; animation-delay: -6s; }
+.tour-blobs i:nth-child(4) { right: 8%; bottom: 4%; width: 30%; background: #f59e0b; animation-duration: 10s; animation-delay: -2s; }
+@keyframes tour-morph {
+  0%, 100% { border-radius: 42% 58% 63% 37% / 41% 44% 56% 59%; transform: translate(0, 0) rotate(0deg); }
+  33% { border-radius: 63% 37% 41% 59% / 55% 62% 38% 45%; transform: translate(8%, -6%) rotate(70deg); }
+  66% { border-radius: 38% 62% 56% 44% / 63% 39% 61% 37%; transform: translate(-6%, 7%) rotate(-45deg); }
+}
+
+/* 液态玻璃卡片 */
+.tour-card { position: absolute; left: 0; top: 0; width: 380px; padding: 18px 20px 16px; border-radius: 24px; isolation: isolate; overflow: hidden;
+  background:
+    radial-gradient(240px 180px at var(--tour-mx) var(--tour-my), var(--tour-spec), transparent 70%),
+    linear-gradient(155deg, var(--tour-glass), var(--tour-glass-2));
+  -webkit-backdrop-filter: blur(28px) saturate(190%) brightness(1.04); backdrop-filter: blur(28px) saturate(190%) brightness(1.04);
+  box-shadow: inset 0 0 0 1px var(--tour-edge), inset 0 1px 1px var(--tour-hi), inset 0 -14px 24px -18px rgba(255, 255, 255, .6),
+    0 0 0 .5px rgba(0, 0, 0, .1), 0 8px 20px -10px rgba(0, 0, 0, .25), 0 32px 64px -24px rgba(0, 0, 0, .5);
+  transition: --tour-mx .35s var(--tour-ease), --tour-my .35s var(--tour-ease); }
+.tour.glide .tour-card { transition: left .7s var(--tour-spring), top .7s var(--tour-spring), --tour-mx .35s var(--tour-ease), --tour-my .35s var(--tour-ease); }
+/* 彩虹色的细边（很淡），像玻璃边缘的色散 */
+.tour-card::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; padding: 1px; pointer-events: none; opacity: .55;
+  background: linear-gradient(135deg, rgba(255, 255, 255, .9), #8ab8ff 30%, #c4a8ff 50%, #ffb3d9 70%, rgba(255, 255, 255, .9));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
+[data-theme="dark"] .tour-card::before { opacity: .22; }
+/* 上半部一道弧形的镜面反光 */
+.tour-card::after { content: ""; position: absolute; left: 6%; right: 6%; top: 1px; height: 40%; z-index: -1; pointer-events: none; border-radius: 24px 24px 50% 50% / 24px 24px 22px 22px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .38), rgba(255, 255, 255, 0)); }
+[data-theme="dark"] .tour-card::after { background: linear-gradient(180deg, rgba(255, 255, 255, .07), rgba(255, 255, 255, 0)); }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .tour-card { background: var(--canvas); } }
+
+.tour-x { position: absolute; top: 12px; right: 12px; z-index: 2; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer; color: var(--body);
+  background: color-mix(in srgb, var(--canvas) 40%, transparent); -webkit-backdrop-filter: blur(10px) saturate(160%); backdrop-filter: blur(10px) saturate(160%);
+  box-shadow: inset 0 0 0 1px var(--tour-edge); transition: transform .4s var(--tour-spring), color .15s, background .15s; }
+.tour-x:hover { color: var(--ink); background: color-mix(in srgb, var(--canvas) 70%, transparent); transform: rotate(90deg); }
+.tour-x .ic { width: 15px; height: 15px; }
+
+.tour-head { display: flex; align-items: center; gap: 12px; margin: 0 34px 10px 0; min-width: 0; }
+.tour-head > div { min-width: 0; }
+.tour-badge { flex: none; width: 38px; height: 38px; border-radius: 13px; display: grid; place-items: center; color: #fff;
+  background: linear-gradient(135deg, #0070f3, #7c3aed 55%, #ec4899);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, .65), inset 0 -6px 10px -6px rgba(0, 0, 0, .3), 0 8px 16px -8px rgba(124, 58, 237, .7); }
+.tour-badge .ic { width: 19px; height: 19px; stroke-width: 2; }
+.tour-meta { display: flex; align-items: baseline; gap: 6px; }
+.tour-eyebrow { display: block; font: 400 11px/16px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: color-mix(in srgb, var(--body) 80%, transparent); }
+.tour-title { margin: 1px 0 0; font-size: 18px; line-height: 24px; font-weight: 600; letter-spacing: -.02em; color: var(--ink); }
+.tour-body { margin: 0; font-size: 14px; line-height: 22px; color: var(--body); }
+
+.tour-foot { display: flex; align-items: center; gap: 8px; margin-top: 18px; }
+/* 进度：当前点是一滴彩色液体，换步时先朝前拉长、再把尾巴收过去 */
+.tour-dots { position: relative; display: flex; gap: 7px; margin-right: auto; }
+.tour-dots i { width: 7px; height: 7px; border-radius: 50%; background: color-mix(in srgb, var(--ink) 16%, transparent); }
+.tour-worm { position: absolute; top: 0; left: 0; right: 0; height: 7px; border-radius: 9999px;
+  background: linear-gradient(90deg, #0070f3, #7c3aed, #ec4899); box-shadow: 0 0 10px rgba(124, 58, 237, .55), inset 0 1px 0 rgba(255, 255, 255, .5); }
+.tour-dots.fwd .tour-worm { transition: right .28s var(--tour-ease), left .32s var(--tour-ease) .14s; }
+.tour-dots.back .tour-worm { transition: left .28s var(--tour-ease), right .32s var(--tour-ease) .14s; }
+.tour-count { font-size: 11px; line-height: 16px; color: color-mix(in srgb, var(--body) 80%, transparent); white-space: nowrap; }
+.tour-count::before { content: "·"; margin-right: 6px; }
+
+.tour-btn { position: relative; overflow: hidden; display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 16px; border: 0; border-radius: 9999px;
+  font-size: 14px; font-weight: 500; white-space: nowrap; cursor: pointer; transition: transform .2s var(--tour-spring), background .15s, box-shadow .15s; }
+.tour-btn .ic { width: 15px; height: 15px; }
+.tour-btn:active { transform: scale(.94); }
+.tour-btn.ghost { color: var(--ink); background: color-mix(in srgb, var(--canvas) 42%, transparent); box-shadow: inset 0 0 0 1px var(--tour-edge), inset 0 1px 0 var(--tour-hi); }
+.tour-btn.ghost:hover { background: color-mix(in srgb, var(--canvas) 72%, transparent); }
+.tour-btn.go { color: #fff; padding: 0 14px 0 18px; background: linear-gradient(135deg, #0070f3, #7c3aed 55%, #ec4899);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, .55), inset 0 -8px 12px -8px rgba(0, 0, 0, .3), 0 10px 20px -10px rgba(124, 58, 237, .75); }
+/* 主按钮悬停时一道光扫过 */
+.tour-btn.go::after { content: ""; position: absolute; inset: 0; pointer-events: none; transform: translateX(-120%);
+  background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, .5) 50%, transparent 70%); }
+.tour-btn.go:hover::after { transform: translateX(120%); transition: transform .75s var(--tour-ease); }
+.tour-btn.go:hover .ic { transform: translateX(2px); }
+.tour-btn.go .ic { transition: transform .3s var(--tour-spring); }
+.tour-btn:focus-visible, .tour-x:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--canvas), 0 0 0 4px color-mix(in srgb, var(--link) 65%, transparent); }
+
+/* ---------- 插画 ---------- */
+.tour-art { position: relative; height: 172px; margin: 0 0 16px; border-radius: 16px; overflow: hidden; display: grid; place-items: center; isolation: isolate;
+  background: color-mix(in srgb, var(--canvas) 28%, transparent); box-shadow: inset 0 0 0 1px var(--tour-edge); }
+
+/* 欢迎：一张玻璃病案纸在彩色光斑上漂浮，扫描光扫过时姓名、证件号、电话、签名依次变成打码标签 */
+.ta-blob { position: absolute; z-index: -1; width: 120px; aspect-ratio: 1; filter: blur(10px); opacity: .7; border-radius: 42% 58% 63% 37% / 41% 44% 56% 59%; animation: tour-morph 8s ease-in-out infinite; }
+.ta-blob.b1 { left: 16%; top: -18%; background: #0070f3; }
+.ta-blob.b2 { right: 12%; top: 18%; width: 110px; background: #ec4899; animation-duration: 10s; animation-delay: -4s; }
+.ta-blob.b3 { left: 34%; bottom: -34%; width: 130px; background: #f59e0b; opacity: .55; animation-duration: 12s; animation-delay: -7s; }
+[data-theme="dark"] .ta-blob { opacity: .5; }
+.ta-sheet { --gl: rgba(15, 23, 42, .12); --gl2: rgba(15, 23, 42, .22); position: relative; width: 172px; height: 140px; padding: 14px 16px; border-radius: 12px; overflow: hidden;
+  display: grid; grid-template-rows: repeat(6, 1fr); align-items: center;
+  background: linear-gradient(145deg, rgba(255, 255, 255, .5), rgba(255, 255, 255, .16));
+  -webkit-backdrop-filter: blur(14px) saturate(180%); backdrop-filter: blur(14px) saturate(180%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .85), inset 1px 1px 0 1px rgba(255, 255, 255, .45), 0 18px 36px -14px rgba(15, 23, 42, .35);
+  animation: ta-float 6s ease-in-out infinite; }
+[data-theme="dark"] .ta-sheet { --gl: rgba(255, 255, 255, .2); --gl2: rgba(255, 255, 255, .34); background: linear-gradient(145deg, rgba(255, 255, 255, .12), rgba(255, 255, 255, .03));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .16), 0 18px 36px -14px rgba(0, 0, 0, .7); }
+@keyframes ta-float { 0%, 100% { transform: translateY(2px) rotate(-3deg); } 50% { transform: translateY(-5px) rotate(-1deg); } }
+.ta-row { display: flex; align-items: center; gap: 6px; }
+.ta-sheet .ln { display: block; height: 6px; border-radius: 3px; background: var(--gl); }
+.ta-row:first-child .ln { height: 8px; background: var(--gl2); }
+/* 一个待打码的值：底下是灰色文字线，扫描光经过时弹出彩色标签（标签颜色取自打印效果，深浅主题都是纸色） */
+.ta-sheet .rv { position: relative; display: block; height: 6px; }
+.ta-sheet .rv::before { content: ""; position: absolute; inset: 0; border-radius: 3px; background: var(--gl); opacity: 0; animation: ta-line 4.4s var(--d, 0s) infinite both; }
+.ta-sheet .rv::after { content: attr(data-l); position: absolute; left: 0; right: 0; top: 50%; height: 15px; margin-top: -7.5px; border-radius: 6px; text-align: center; white-space: nowrap; overflow: hidden;
+  font: 500 8.5px/15px var(--sans); letter-spacing: 0; background: #ecebfc; color: #3c3489; box-shadow: inset 0 0 0 1px rgba(60, 52, 137, .12); animation: ta-pop 4.4s var(--d, 0s) infinite both; }
+.ta-sheet .rv.amber::after { background: #fff1d6; color: #7a4b00; box-shadow: inset 0 0 0 1px rgba(122, 75, 0, .14); }
+.ta-sheet .rv.pink::after { background: #ffe4f2; color: #8a1257; box-shadow: inset 0 0 0 1px rgba(138, 18, 87, .12); }
+.ta-sheet .rv.hatch::after { height: 12px; margin-top: -6px; border-radius: 2px; background: repeating-linear-gradient(45deg, #787c82 0 1.5px, #ecece9 1.5px 5px); box-shadow: none; }
+[data-theme="dark"] .ta-sheet .rv::after { filter: brightness(.85) saturate(.9); }
+@keyframes ta-pop {
+  0% { opacity: 0; transform: scale(.4); }
+  3% { opacity: 1; transform: scale(1.16); }
+  6% { transform: scale(.94); }
+  9%, 72% { opacity: 1; transform: scale(1); }
+  78%, 100% { opacity: 0; transform: scale(.9); }
+}
+@keyframes ta-line { 0% { opacity: 1; } 3%, 74% { opacity: 0; } 80%, 100% { opacity: 1; } }
+/* 扫描光：自上而下匀速扫过，带一道向上渐隐的光晕 */
+.ta-beam { position: absolute; left: -6%; right: -6%; top: 8%; height: 2px; opacity: 0; pointer-events: none;
+  background: linear-gradient(90deg, transparent, #7c3aed 18%, #ec4899 50%, #0070f3 82%, transparent);
+  box-shadow: 0 0 12px 2px rgba(124, 58, 237, .5); animation: ta-beam 4.4s linear infinite; }
+.ta-beam::before { content: ""; position: absolute; left: 0; right: 0; bottom: 2px; height: 26px; background: linear-gradient(0deg, rgba(124, 58, 237, .18), transparent); }
+@keyframes ta-beam { 0%, 6% { top: 8%; opacity: 0; } 9%, 53% { opacity: 1; } 56%, 100% { top: 92%; opacity: 0; } }
+/* 几颗漂浮的小玻璃泡 */
+.ta-bub { position: absolute; z-index: 1; width: var(--s); aspect-ratio: 1; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle at 32% 28%, rgba(255, 255, 255, .95), rgba(255, 255, 255, .25) 30%, rgba(255, 255, 255, .06) 62%), rgba(255, 255, 255, .08);
+  -webkit-backdrop-filter: blur(2px) saturate(180%); backdrop-filter: blur(2px) saturate(180%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .7), inset 0 -3px 6px -2px rgba(124, 58, 237, .25), 0 4px 10px -4px rgba(15, 23, 42, .25);
+  animation: ta-bob var(--t, 5s) ease-in-out var(--dl, 0s) infinite alternate; }
+@keyframes ta-bob { from { transform: translateY(6px); } to { transform: translateY(-10px); } }
+
+/* 结果：一页对比预览，玻璃分隔线左右滑动（左原件、右脱敏后），下面“对比、复核、下载”依次亮起 */
+.tour-art.ta-compare { height: auto; grid-template-rows: auto auto; gap: 12px; padding: 14px 0 12px; }
+.ta-page { position: relative; width: 216px; height: 112px; border-radius: 6px; overflow: hidden; background: #fbfbfa;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, .08), 0 14px 28px -12px rgba(15, 23, 42, .35); }
+[data-theme="dark"] .ta-page { filter: brightness(.86); box-shadow: 0 0 0 1px rgba(255, 255, 255, .08), 0 14px 28px -12px rgba(0, 0, 0, .7); }
+.ta-layer { position: absolute; inset: 0; width: 216px; padding: 14px 16px; display: grid; grid-template-rows: repeat(5, 1fr); align-items: center; }
+.ta-layer .ta-row > * { display: block; height: 6px; border-radius: 3px; background: #e2e2df; }
+.ta-layer .ta-row > .k { background: #d4d4d1; }
+.ta-after .ta-row > .p { height: 12px; border-radius: 5px; background: #ecebfc; box-shadow: inset 0 0 0 1px rgba(60, 52, 137, .12); }
+.ta-after .ta-row > .p.amber { background: #fff1d6; }
+.ta-after .ta-row > .p.pink { background: #ffe4f2; }
+.ta-before .ta-row > .p { height: 6px; background: repeating-linear-gradient(90deg, #55565a 0 5px, transparent 5px 7px); }
+.ta-before { position: absolute; left: 0; top: 0; bottom: 0; z-index: 1; width: 50%; overflow: hidden; background: #fbfbfa; animation: ta-w 5s ease-in-out infinite; }
+.ta-after::after { content: ""; position: absolute; inset: 0; background: rgba(15, 23, 42, .04); }
+.ta-handle { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px; z-index: 2;
+  background: linear-gradient(90deg, rgba(255, 255, 255, .3), #fff 50%, rgba(255, 255, 255, .3)); box-shadow: 0 0 0 .5px rgba(0, 0, 0, .14), 0 0 10px rgba(0, 0, 0, .12);
+  animation: ta-l 5s ease-in-out infinite; }
+.ta-handle i { position: absolute; top: 50%; left: 50%; width: 14px; height: 26px; transform: translate(-50%, -50%); border-radius: 9999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .6), rgba(255, 255, 255, .18) 55%, rgba(255, 255, 255, .35));
+  -webkit-backdrop-filter: blur(3px) saturate(190%); backdrop-filter: blur(3px) saturate(190%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .85), inset 0 1px 1px #fff, 0 0 0 .5px rgba(0, 0, 0, .18), 0 4px 10px -2px rgba(0, 0, 0, .3); }
+@keyframes ta-w { 0%, 100% { width: 24%; } 45%, 55% { width: 76%; } }
+@keyframes ta-l { 0%, 100% { left: 24%; } 45%, 55% { left: 76%; } }
+.ta-tag { position: absolute; top: 5px; z-index: 3; padding: 2px 5px; border-radius: 9999px; font: 500 8px/1 var(--sans); color: #fff; background: rgba(23, 23, 23, .55); }
+.ta-tag.l { left: 5px; } .ta-tag.r { right: 5px; }
+.ta-chips { display: flex; gap: 6px; justify-content: center; }
+.ta-chips span { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 10px; border-radius: 9999px; font-size: 12px; color: var(--body);
+  background: color-mix(in srgb, var(--canvas) 40%, transparent); box-shadow: inset 0 0 0 1px var(--tour-edge); animation: ta-chip 6s ease-in-out var(--dl, 0s) infinite; }
+.ta-chips .ic { width: 13px; height: 13px; }
+@keyframes ta-chip {
+  0%, 4% { color: var(--body); background: color-mix(in srgb, var(--canvas) 40%, transparent); transform: none; }
+  9%, 28% { color: #fff; background: linear-gradient(135deg, #0070f3, #7c3aed 55%, #ec4899); transform: translateY(-2px); box-shadow: inset 0 1px 1px rgba(255, 255, 255, .5), 0 6px 14px -6px rgba(124, 58, 237, .7); }
+  34%, 100% { color: var(--body); background: color-mix(in srgb, var(--canvas) 40%, transparent); transform: none; }
+}
+
+/* 完成时从按钮迸出的一捧玻璃泡与小标签 */
+.tour-confetti { position: fixed; inset: 0; z-index: 2000; pointer-events: none; overflow: hidden; }
+.tour-confetti i { position: absolute; width: var(--s); height: var(--s); border-radius: 50%;
+  background: radial-gradient(circle at 32% 28%, rgba(255, 255, 255, .95), rgba(255, 255, 255, 0) 45%), var(--c);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .5), 0 4px 10px -4px var(--c); }
+.tour-confetti i.bar { width: calc(var(--s) * 2.2); height: calc(var(--s) * .75); border-radius: 3px; }
+
+@media (max-width: 640px) {
+  .tour-card { padding: 16px 16px 14px; border-radius: 22px; }
+  .tour-art { height: 150px; margin-bottom: 14px; }
+  .ta-sheet { width: 164px; height: 128px; padding: 12px 15px; }
+  .tour-title { font-size: 17px; }
+}
+@media (max-width: 360px) { .tour-dots { visibility: hidden; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-ring::before, .tour-blobs i, .tour-art *, .tour-art *::before, .tour-art *::after, .tour-spot.ping .tour-ring::after { animation: none !important; }
+  .ta-sheet .rv::before { opacity: 0; }
+}

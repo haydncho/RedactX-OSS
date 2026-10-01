@@ -1071,7 +1071,7 @@
     initHandle();
     initZoom();
     initSummaryToggle();
-    refreshHistory();
+    refreshHistory().then(() => window.Tour?.auto());  // 第一次打开时自动播放使用向导（等最近任务加载完，决定要不要介绍它）
 
     $("#custom-words").addEventListener("input", (e) => { state.custom = e.target.value; save(); });
     $("#opt-retention").addEventListener("change", (e) => { state.retention = e.target.value; save(); });

@@ -35,7 +35,7 @@ uv pip install --python .venv/bin/python -e ".[ner-export]" && .venv/bin/python 
 .venv/bin/uvicorn service.app:app --host 127.0.0.1 --port 8000
 ```
 
-打开 http://127.0.0.1:8000 。
+打开 http://127.0.0.1:8000 。第一次打开控制台时会自动播放使用向导，之后点右上角“使用向导”随时再看。
 
 ### 方式二：Apple container
 
