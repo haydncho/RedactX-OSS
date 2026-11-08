@@ -26,6 +26,7 @@ docs/
 site/
 tests/
 models/detector/
+models/visual/
 # 兜底：任何位置的文档、扫描件与图片（web/ 里的界面图片除外）
 **/*.pdf
 **/*.tif

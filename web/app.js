@@ -369,7 +369,15 @@
     const v = report.verification;
     const wmObj = report.watermark_objects ? `；已从 PDF 结构中删除水印对象 ${report.watermark_objects} 个` : "";
     const vPages = v?.pages != null ? `（${v.pages} 页）` : "";
-    $("#sum-foot").textContent = (v?.enabled ? `出厂自检${vPages}：补打 ${v.residual_hits} 处` : v?.mode === "auto" ? "无扫描页，未自检" : "未开启出厂自检") + wmObj;
+    const visual = report.visual_verification;
+    const visualText = visual ? ({
+      disabled: "视觉检查未启用", not_applicable: "未选择印章或签名检查",
+      passed: `视觉检查完成（${visual.pages} 页），未检出印章、签名残留`,
+      review: `视觉检查发现 ${visual.findings?.length || 0} 处疑似残留，请复核`,
+      failed: "视觉检查失败，请复核", stale: "内容已修改，视觉检查结果已失效"
+    }[visual.status] || "视觉检查状态未知") : "";
+    const concernsText = report.visual_concerns?.length ? `；${report.visual_concerns.length} 处视觉框与日期重叠，未自动遮盖，请复核` : "";
+    $("#sum-foot").textContent = (v?.stale ? "内容已修改，原文字自检结果已失效" : v?.enabled ? `出厂自检${vPages}：补打 ${v.residual_hits} 处` : v?.mode === "auto" ? "无扫描页，未自检" : "未开启出厂自检") + wmObj + (visualText ? `；${visualText}` : "") + concernsText;
   }
 
   function renderThumbs() {
@@ -459,6 +467,13 @@
       d._item = it;
       if (reviewing && it === sel && canEdit(it)) d.append(el("span", { class: "rs", title: "拖动调整大小" }));
       box.append(d);
+    }
+    // Evidence is a suggestion, never silently promoted into a redaction box.
+    for (const it of [...(report.visual_verification?.findings || []), ...(report.visual_concerns || [])]) {
+      if (it.page !== page) continue;
+      const [x0, y0, x1, y1] = it.box;
+      box.append(el("div", { class: "box", title: it.reason === "DATE_OVERLAP" ? "视觉框与日期重叠，未自动遮盖，请复核" : `疑似${it.type === "SEAL" ? "印章" : "签名"}残留，请复核`,
+        style: `left:${x0 * 100}%;top:${y0 * 100}%;width:${(x1 - x0) * 100}%;height:${(y1 - y0) * 100}%;border:2px dashed #d97706;pointer-events:none` }));
     }
   }
 
@@ -739,7 +754,7 @@
   }
 
 
-  const SRC_NAME = { rule: "规则", anchor: "字段锚定", "anchor-field": "填写区", propagate: "全文追踪", custom: "自定义词", color: "颜色", detector: "检测", "image-object": "图片对象", repeat: "跨页重复", watermark: "水印消除", verify: "自检补打", manual: "人工添加", ner: "正文识别", model: "检测模型", template: "表单模板", "beside-org": "院名旁图形" };
+  const SRC_NAME = { rule: "规则", anchor: "字段锚定", "anchor-field": "填写区", propagate: "全文追踪", custom: "自定义词", color: "颜色", detector: "检测", "image-object": "图片对象", repeat: "跨页重复", watermark: "水印消除", verify: "自检补打", manual: "人工添加", ner: "正文识别", model: "检测模型", "visual-model": "视觉检测", template: "表单模板", "beside-org": "院名旁图形" };
   function renderPageItems() {
     const ul = $("#page-items"); ul.replaceChildren();
     const items = itemsOf(page);

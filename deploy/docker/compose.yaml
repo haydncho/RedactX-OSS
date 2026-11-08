@@ -22,9 +22,13 @@ services:
       REDACTX_REQUIRE_SANDBOX: ${REDACTX_REQUIRE_SANDBOX:-}
       REDACTX_PAGE_WORKERS: ${REDACTX_PAGE_WORKERS:-2}
       REDACTX_RETENTION_HOURS: ${REDACTX_RETENTION_HOURS:-24}
+      REDACTX_VISUAL_ENABLED: ${REDACTX_VISUAL_ENABLED:-0}
+      REDACTX_VISUAL_MODEL_DIR: /models/visual
+      REDACTX_VISUAL_THREADS: ${REDACTX_VISUAL_THREADS:-2}
     # 数据（任务结果、预览、库）放在命名卷里：继承镜像里 /data 的属主（非 root 用户 10001），宿主机目录挂载会因属主不对写不进去
     volumes:
       - redactx-data:/data
+      - ${REDACTX_VISUAL_HOST_DIR:-../../models/visual}:/models/visual:ro
     # 加固：根文件系统只读（可写的只有数据卷与 /tmp）、去掉全部 Linux 能力、禁止提权
     read_only: true
     tmpfs:

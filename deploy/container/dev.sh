@@ -38,6 +38,15 @@ fi
 
 # 需要时把 API Key、导出开关传进容器（例如通过隧道对外演示时必须设置 API Key）
 EXTRA=()
+if [ "${REDACTX_VISUAL_ENABLED:-}" = 1 ]; then
+  VISUAL="${REDACTX_VISUAL_MODEL_DIR:-$ROOT/models/visual}"
+  for f in model.onnx config.json manifest.json; do
+    [ -f "$VISUAL/$f" ] || { echo "缺少视觉模型文件：$VISUAL/$f" >&2; exit 1; }
+  done
+  EXTRA+=(-e REDACTX_VISUAL_ENABLED=1 -e REDACTX_VISUAL_MODEL_DIR=/models/visual
+    -e "REDACTX_VISUAL_THREADS=${REDACTX_VISUAL_THREADS:-2}"
+    --mount "type=bind,source=$VISUAL,target=/models/visual,readonly")
+fi
 [ -n "${REDACTX_API_KEY:-}" ] && EXTRA+=(-e "REDACTX_API_KEY=$REDACTX_API_KEY")
 [ -n "${REDACTX_ALLOW_EXPORT:-}" ] && EXTRA+=(-e "REDACTX_ALLOW_EXPORT=$REDACTX_ALLOW_EXPORT")
 

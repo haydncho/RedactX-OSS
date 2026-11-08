@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from . import ocr, redact
+from . import ocr, redact, visual
 from .catalog import ENTITY_BY_CODE, STYLE_CODES, resolve_style
 from . import output
 
@@ -51,7 +51,9 @@ def _clean(raw, pages: int, default_style) -> list[dict]:
         if style not in STYLE_CODES and style != "watermark":
             raise ReviewError("INVALID_ITEMS", f"不支持的样式：{style}")
         # 来源与代号会写进报告、画到图上：限制长度
-        out.append({"page": page, "type": typ, "source": str(it.get("source") or "manual")[:32], "style": style,
+        sources = it.get("sources")
+        sources = [str(s)[:32] for s in sources[:8]] if isinstance(sources, list) else [str(it.get("source") or "manual")[:32]]
+        out.append({"page": page, "type": typ, "source": str(it.get("source") or "manual")[:32], "sources": sources, "style": style,
                     "alias": it.get("alias")[:64] if isinstance(it.get("alias"), str) else None,
                     "box": [round(x0, 4), round(y0, 4), round(x1, 4), round(y1, 4)]})
     return out
@@ -91,6 +93,16 @@ def apply(out_dir: Path, raw_items) -> dict:
     if removed and not editable:
         raise ReviewError("NOT_EDITABLE", "本任务未保留原件，只能加框，不能删框或改框")
     changed = sorted({k[0] for k in removed} | {k[0] for k in added})
+    visual_entities = (set(report.get("options", {}).get("entities", []))
+                       | set(report.get("visual_verification", {}).get("entities", []))
+                       | {it["type"] for it in report["items"]} | {it["type"] for it in items})
+    # Invalidate evidence before changing pixels, including an interrupted redraw.
+    if changed:
+        report["visual_verification"] = {"status": "stale", "pages": 0, "findings": [], "model_version": None}
+        if "verification" in report:
+            report["verification"]["passed"] = None
+            report["verification"]["stale"] = True
+        (out_dir / "report.json").write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
     rotations = {m["page"]: m.get("rotation", 0) for m in report.get("page_meta", [])}
 
     for p in changed:
@@ -112,6 +124,11 @@ def apply(out_dir: Path, raw_items) -> dict:
 
     if changed:
         output.rebuild(layout["kind"], layout["sizes"], out_dir / "pages", out_dir, report["pages"])
+        try:
+            report["visual_verification"] = visual.check_output(out_dir / report["output"], visual_entities, expected_pages=report["pages"])
+        except Exception:
+            # Edits are saved; inference failure must not reuse the old clean result.
+            report["visual_verification"] = {"status": "failed", "pages": 0, "findings": [], "model_version": None}
     report["items"] = items
     report["counts"] = dict(Counter(it["type"] for it in items))
     rv = report.setdefault("review", {})

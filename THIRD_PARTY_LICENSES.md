@@ -6,6 +6,8 @@ RedactX 运行时依赖以下开源组件。它们各自的许可证以其官方
 |---|---|---|
 | RapidOCR（含 PP-OCRv6 模型） | OCR | Apache-2.0 |
 | ONNX Runtime | 模型推理 | MIT |
+| BlueCopa RF-DETR stamp/signature detector（可选模型） | 印章、签名视觉检测 | 模型卡声明 Apache-2.0；固定版本、哈希见 docs/visual-model.md |
+| RF-DETR 1.2.1（仅导出工具） | 导出视觉检测 ONNX | Apache-2.0 |
 | pypdfium2 / PDFium | PDF 渲染与文字层 | Apache-2.0 / BSD-3-Clause |
 | pikepdf / qpdf | PDF 清理、计页 | MPL-2.0 / Apache-2.0 |
 | img2pdf | 图片封装为 PDF | LGPL-3.0（仅作为依赖调用，未修改源码） |

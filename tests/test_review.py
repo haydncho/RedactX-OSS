@@ -85,3 +85,52 @@ def test_export_needs_source(tmp_path):
     out, _ = _job(tmp_path, editable=False)
     with pytest.raises(review.ReviewError):
         review.export(out, tmp_path / "e.zip")
+
+
+def test_visual_evidence_rechecked_after_removing_all_boxes(tmp_path, monkeypatch):
+    out, _ = _job(tmp_path, editable=True)
+    report = json.loads((out / "report.json").read_text())
+    report["options"]["entities"] = ["SIGNATURE"]
+    report["visual_verification"] = {"status": "passed"}
+    report["verification"] = {"passed": True}
+    (out / "report.json").write_text(json.dumps(report))
+
+    def check(path, selected, expected_pages=None):
+        assert path.exists() and "SIGNATURE" in selected and expected_pages == 1
+        assert json.loads((out / "report.json").read_text())["visual_verification"]["status"] == "stale"
+        return {"status": "review", "findings": [{"page": 1}]}
+
+    monkeypatch.setattr(review.visual, "check_output", check)
+    rep = review.apply(out, [])
+    assert rep["visual_verification"]["status"] == "review"
+    assert rep["verification"]["passed"] is None
+
+
+def test_visual_failure_after_edit_never_reuses_pass(tmp_path, monkeypatch):
+    out, item = _job(tmp_path, editable=True)
+
+    def fail(*args):
+        raise RuntimeError("model unavailable")
+
+    monkeypatch.setattr(review.visual, "check_output", fail)
+    rep = review.apply(out, [item, {"page": 1, "type": "SEAL", "box": [.6, .6, .9, .9]}])
+    assert rep["visual_verification"]["status"] == "failed"
+    assert json.loads((out / "report.json").read_text())["visual_verification"]["status"] == "failed"
+
+
+def test_job_summary_updates_check_evidence_after_review(tmp_path, monkeypatch):
+    from service.jobs import JobStore
+    from redactx.pipeline import Options
+
+    store = JobStore(tmp_path)
+    monkeypatch.setattr(store.pool, "submit", lambda *args: None)
+    src = tmp_path / "source.png"
+    src.write_bytes(b"test")
+    job = store.create(src, "png", Options(), 1)
+    store._update(job, summary=json.dumps({"verification": {"passed": True}}))
+    report = {"counts": {}, "verification": {"passed": None, "stale": True},
+              "visual_verification": {"status": "review"}, "visual_concerns": []}
+    store.review(job, lambda *args: report)
+    assert store.get(job)["summary"]["verification"]["passed"] is None
+    assert store.get(job)["summary"]["visual_verification"]["status"] == "review"
+    assert "findings" not in store.get(job)["summary"]["visual_verification"]

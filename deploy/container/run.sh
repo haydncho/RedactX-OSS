@@ -28,6 +28,15 @@ fi
 # API Key、导出开关传进容器。通过隧道等方式对外提供服务时必须设置 REDACTX_API_KEY（管理员 Key），
 # 再用 deploy/keys.sh 给每位使用者生成用户 Key
 EXTRA=()
+if [ "${REDACTX_VISUAL_ENABLED:-}" = 1 ]; then
+  VISUAL="${REDACTX_VISUAL_MODEL_DIR:-$ROOT/models/visual}"
+  for f in model.onnx config.json manifest.json; do
+    [ -f "$VISUAL/$f" ] || { echo "缺少视觉模型文件：$VISUAL/$f" >&2; exit 1; }
+  done
+  EXTRA+=(-e REDACTX_VISUAL_ENABLED=1 -e REDACTX_VISUAL_MODEL_DIR=/models/visual
+    -e "REDACTX_VISUAL_THREADS=${REDACTX_VISUAL_THREADS:-2}"
+    --mount "type=bind,source=$VISUAL,target=/models/visual,readonly")
+fi
 [ -n "${REDACTX_API_KEY:-}" ] && EXTRA+=(-e "REDACTX_API_KEY=$REDACTX_API_KEY")
 [ -n "${REDACTX_ALLOW_EXPORT:-}" ] && EXTRA+=(-e "REDACTX_ALLOW_EXPORT=$REDACTX_ALLOW_EXPORT")
 [ -z "${REDACTX_API_KEY:-}" ] && echo "提示：未设置 REDACTX_API_KEY，服务不校验 Key。只在本机使用时可以；对外提供前务必设置" >&2

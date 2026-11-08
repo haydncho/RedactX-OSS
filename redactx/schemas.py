@@ -78,3 +78,4 @@ class Region:
     rect: Rect
     alias: str | None = None
     style: str | None = None
+    sources: list[str] = field(default_factory=list)

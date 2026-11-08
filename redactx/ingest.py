@@ -123,6 +123,11 @@ def open_doc(path: Path, password: str | None, max_pages: int) -> SourceDoc:
             sizes = []
             for fr in ImageSequence.Iterator(im):
                 dpi = fr.info.get("dpi", (200, 200))[0] or 200
+                # TIFF often stores a unitless/default resolution of 1 DPI.
+                # Treat non-scan metadata as unspecified instead of creating a
+                # metre-wide PDF that cannot be safely rendered for verification.
+                if not math.isfinite(dpi) or not 36 <= dpi <= 2400:
+                    dpi = 200
                 sizes.append((fr.width * 72 / dpi, fr.height * 72 / dpi))
     if n == 0:
         raise InputError("INVALID_FILE", "文件没有可处理的页面")

@@ -26,6 +26,7 @@ from redactx.config import settings
 from redactx.convert import OFFICE_KINDS
 from redactx.ingest import InputError, count_pages, sniff
 from redactx.pipeline import Options, run
+from redactx import visual
 
 from .jobs import JobStore
 from .keys import ADMIN, KeyStore, Principal
@@ -215,7 +216,8 @@ async def http_error(_, exc: HTTPException):
 @app.get("/v1/health", tags=["系统"], summary="服务状态", description="返回版本号、是否找到打码标签字体、默认渲染分辨率、单个文件上传上限（max_upload_mb）。不需要 API Key。")
 def health():
     return {"status": "ok", "version": __version__, "font": bool(settings.font_path), "dpi": settings.render_dpi,
-            "export": settings.allow_export and bool(settings.api_key), "max_upload_mb": settings.max_upload_mb}
+            "export": settings.allow_export and bool(settings.api_key), "max_upload_mb": settings.max_upload_mb,
+            "visual": visual.health()}
 
 
 @app.get("/v1/catalog", tags=["目录"], summary="完整目录", description="实体分组、实体类型、打码样式与场景预设。Web 页据此生成设置面板。", dependencies=[Depends(auth)])
@@ -410,7 +412,10 @@ async def redact_sync(
     from fastapi.responses import Response
 
     media = "application/pdf" if report["output"].endswith(".pdf") else ("image/jpeg" if report["output"].endswith(".jpg") else "image/png")
-    return Response(data, media_type=media, headers={"X-Redact-Counts": json.dumps(report["counts"]), "Cache-Control": "no-store"})
+    return Response(data, media_type=media, headers={"X-Redact-Counts": json.dumps(report["counts"]), "Cache-Control": "no-store",
+                    "X-Redact-Visual-Status": report["visual_verification"]["status"],
+                    "X-Redact-Visual-Findings": str(len(report["visual_verification"]["findings"])),
+                    "X-Redact-Visual-Concerns": str(len(report["visual_concerns"]))})
 
 
 class _RevalidatedStatic(StaticFiles):

@@ -60,6 +60,18 @@ def clean_name(name: str | None) -> str | None:
 # 任务 ID：job_ 加 20 位小写字母数字（生成时用 uuid4 的十六进制）
 JOB_ID = re.compile(r"job_[0-9a-z]{20}")
 
+
+def report_summary(report: dict) -> dict:
+    """Recent-task listings carry check state, not every residual coordinate."""
+    summary = {k: report[k] for k in ("pages", "counts", "elapsed_sec", "output", "verification") if k in report}
+    if "visual_verification" in report:
+        check = report["visual_verification"]
+        summary["visual_verification"] = {k: check[k] for k in ("status", "pages", "model_version") if k in check}
+        summary["visual_verification"]["findings_count"] = len(check.get("findings", []))
+    summary["visual_concerns_count"] = len(report.get("visual_concerns", []))
+    return summary
+
+
 class JobStore:
     def __init__(self, root: Path):
         self.root = root
@@ -133,7 +145,7 @@ class JobStore:
         try:
             report = run(src, self.dir(job_id) / "out", opts, progress)
             (self.dir(job_id) / "out" / "report.json").write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
-            summary = {k: report[k] for k in ("pages", "counts", "elapsed_sec", "output", "verification")}
+            summary = report_summary(report)
             self._update(job_id, status="succeeded", progress=1.0, message="完成", pages=report["pages"], summary=json.dumps(summary, ensure_ascii=False))
             log.info("job %s succeeded pages=%s elapsed=%s", job_id, report["pages"], report["elapsed_sec"])
         except InputError as e:
@@ -155,9 +167,9 @@ class JobStore:
         """复核改动串行执行，并同步更新任务摘要里的遮盖数量。"""
         with self._review_lock:
             report = fn(self.dir(job_id) / "out", *args)
-        job = self.get(job_id)
-        summary = {**(job["summary"] or {}), "counts": report["counts"]}
-        self._update(job_id, summary=json.dumps(summary, ensure_ascii=False))
+            job = self.get(job_id)
+            summary = {**(job["summary"] or {}), **report_summary(report)}
+            self._update(job_id, summary=json.dumps(summary, ensure_ascii=False))
         return report
 
     def get(self, job_id: str) -> dict | None:

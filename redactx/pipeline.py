@@ -21,7 +21,7 @@ from typing import Callable
 
 import numpy as np
 
-from . import ocr, output, pdfwm, redact, vision
+from . import ocr, output, pdfwm, redact, vision, visual
 from .catalog import ENTITY_BY_CODE, resolve_style
 from .detect import engine, rules
 from .detect import detector
@@ -109,10 +109,11 @@ def _merge(regions: list[Region]) -> list[Region]:
             gap = max(bx0 - ax1, ax0 - bx1)
             if gap <= 0.3 * min(ay1 - ay0, by1 - by0):
                 o.rect = (min(ax0, bx0), min(ay0, by0), max(ax1, bx1), max(ay1, by1))
+                o.sources = sorted(set(o.sources + (r.sources or [r.source])))
                 merged = True
                 break
         if not merged:
-            out.append(Region(r.type, r.source, r.page, r.rect, r.alias, r.style))
+            out.append(Region(r.type, r.source, r.page, r.rect, r.alias, r.style, list(r.sources or [r.source])))
     return out
 
 
@@ -373,6 +374,18 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
             raise InputError("CONVERT_FAILED", str(e)) from e
     doc = open_doc(src, opts.password, settings.max_pages)
     enabled = set(opts.entities)
+    # Detect before watermark removal; store boxes in original-page coordinates.
+    visual_regions: dict[int, list[Region]] = {}
+    visual_concerns = []
+    if settings.visual_enabled and visual.TYPES & enabled:
+        for image, raw_pd in iter_pages(src, doc.kind, opts.dpi, opts.password):
+            rotation = ocr.detect_orientation(image) if raw_pd.text_source != "text" else 0
+            h, w = image.shape[:2]
+            found = visual.regions(ocr.rotate(image, rotation), raw_pd.index, enabled)
+            for region in found:
+                region.rect = ocr.rect_unrotate(region.rect, rotation, w, h)
+            visual_regions[raw_pd.index] = found
+            progress(0.01, f"视觉检测第 {raw_pd.index + 1}/{doc.page_count} 页")
     # PDF 结构里的水印对象（水印注释、标记为水印的内容、水印图层）在渲染前直接删掉，不碰像素
     wm_objects = 0
     pdf_wm: dict[int, list[Region]] = {}  # 从 PDF 结构里删掉的斜向水印文字：只记入报告，不再打码
@@ -456,8 +469,18 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
             regions += [Region("SEAL", "color", pd.index, r) for r in vision.red_seals(work, opts.dpi)]
         if "QRCODE" in enabled:
             regions += [Region("QRCODE", "detector", pd.index, r) for r in vision.codes(work, opts.dpi)]
-        if ({"SIGNATURE", "SEAL"} & enabled) and pd.text_source != "text" and detector.available():
+        if not settings.visual_enabled and ({"SIGNATURE", "SEAL"} & enabled) and pd.text_source != "text" and detector.available():
             regions += _detected(work, pd, enabled)
+        candidates = visual_regions.get(pd.index, [])
+        for region in candidates:
+            region.rect = ocr.rect_unrotate(region.rect, (360 - pd.rotation) % 360, work.shape[1], work.shape[0])
+        accepted, concerns = visual.protect_dates(candidates, pd)
+        regions += accepted
+        for region in concerns:
+            h, w = img.shape[:2]
+            x0, y0, x1, y1 = ocr.rect_unrotate(region.rect, pd.rotation, w, h)
+            visual_concerns.append({"page": pd.index + 1, "type": region.type, "reason": "DATE_OVERLAP",
+                                    "box": [x0 / w, y0 / h, x1 / w, y1 / h]})
         if "LOGO" in enabled:
             graphics += vision.graphic_candidates(work, pd.lines, pd.index, opts.dpi)
             org_rects.append([r for r in (hits_to_rect(pd, h, strict) for h in hits if h.type == "ORG") if r])
@@ -557,6 +580,7 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
                     "page": i + 1,
                     "type": r.type,
                     "source": r.source,
+                    "sources": r.sources or [r.source],
                     "style": r.style,
                     "alias": r.alias,
                     "box": [round(max(x0, 0) / ow, 4), round(max(y0, 0) / oh, 4), round(min(x1, ow) / ow, 4), round(min(y1, oh) / oh, 4)],
@@ -610,6 +634,8 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
     # ---------- 重建 ----------
     progress(0.99, "生成输出文件")
     out_path = output.rebuild(doc.kind, doc.page_sizes_pt, pages_dir, out_dir, n)
+    progress(0.99, "检查最终文件的印章、签名残留")
+    visual_check = visual.check_output(out_path, enabled, expected_pages=n)
     # 复核时重打码、重建输出用
     layout = {"kind": doc.kind, "sizes": [list(s) for s in doc.page_sizes_pt], "dpi": opts.dpi, "label_text": opts.label_text}
     (out_dir / "layout.json").write_text(json.dumps(layout), encoding="utf-8")
@@ -625,6 +651,8 @@ def run(src: Path, out_dir: Path, opts: Options, progress: ProgressCb = lambda p
         "items": report_items,
         "page_meta": page_meta,
         "verification": {"enabled": verified_pages > 0, "mode": opts.verify, "pages": verified_pages, "residual_hits": residual_total, "passed": True},
+        "visual_verification": visual_check,
+        "visual_concerns": visual_concerns,
         "watermark_objects": wm_objects,
         "review": {"editable": opts.keep_source, "edits": 0},  # 从 PDF 结构里直接删除的水印对象数
         "options": {
