@@ -8,6 +8,13 @@ from redactx import vision
 DPI = 200
 
 
+def _qr(payload):
+    code = cv2.QRCodeEncoder.create().encode(payload)
+    code = cv2.resize(code, None, fx=8, fy=8, interpolation=cv2.INTER_NEAREST)
+    code = cv2.copyMakeBorder(code, 24, 24, 24, 24, cv2.BORDER_CONSTANT, value=255)
+    return cv2.cvtColor(code, cv2.COLOR_GRAY2RGB)
+
+
 def _page(draw=None, shift=(0, 0)) -> np.ndarray:
     img = np.full((2339, 1654, 3), 245, np.uint8)
     if draw:
@@ -63,6 +70,45 @@ def test_qr_plausibility():
     assert vision._plausible_qr(square, DPI)
     assert not vision._plausible_qr(square * 6, DPI)  # 大半页的“二维码”多是表格线
     assert not vision._plausible_qr(np.array([[0, 0], [300, 0], [300, 90], [0, 90]], np.float32), DPI)
+
+
+def test_qr_text_candidate_without_finders_is_rejected(monkeypatch):
+    img = np.full((600, 600, 3), 255, np.uint8)
+    for y in range(110, 330, 40):
+        cv2.putText(img, "NAME 123456", (110, y), cv2.FONT_HERSHEY_SIMPLEX, .7, (0, 0, 0), 2)
+    points = np.array([[[100, 80], [350, 80], [350, 350], [100, 350]]], np.float32)
+
+    class Detector:
+        def detectMulti(self, gray):
+            return True, points
+
+    monkeypatch.setattr(cv2, "QRCodeDetector", Detector)
+    assert vision.codes(img) == []
+
+
+def test_qr_with_damaged_payload_is_still_detected():
+    qr = _qr("RX-TEST-FINDER-VALIDATION")
+    # Destroy payload pixels while preserving the three finder patterns.
+    h, w = qr.shape[:2]
+    qr[h // 2:h // 2 + 25, w // 2:w // 2 + 25] = 255
+    img = np.full((700, 700, 3), 255, np.uint8)
+    img[100:100+h, 100:100+w] = qr
+    assert len(vision.codes(img)) == 1
+
+
+def test_valid_large_multi_qr_is_not_rejected_by_physical_size(monkeypatch):
+    qr = _qr("RX-LARGE-QR")
+    img = cv2.resize(qr, (700, 700), interpolation=cv2.INTER_NEAREST)
+    real = cv2.QRCodeDetector()
+    ok, points = real.detectMulti(cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
+    assert ok
+
+    class Detector:
+        def detectMulti(self, gray):
+            return ok, points
+
+    monkeypatch.setattr(cv2, "QRCodeDetector", Detector)
+    assert len(vision.codes(img)) == 1
 
 
 def _seal(img, cx, cy, color):

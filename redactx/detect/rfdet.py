@@ -81,9 +81,11 @@ def _infer(image: np.ndarray, threshold: float) -> list[tuple[str, Rect, float]]
     if (boxes.ndim != 2 or boxes.shape[1] != 4 or logits.ndim != 2
             or logits.shape != (len(boxes), 4) or not np.isfinite(boxes).all() or not np.isfinite(logits).all()):
         raise VisualModelError("VISUAL_MODEL_OUTPUT_INVALID")
-    scores = 1 / (1 + np.exp(-np.clip(logits[:, :2], -60, 60)))
+    scores = 1 / (1 + np.exp(-np.clip(logits, -60, 60)))
     found = []
-    for q, c in zip(*np.where(scores >= threshold)):
+    for q, c in enumerate(scores.argmax(axis=1)):
+        if c >= len(_CLASSES) or scores[q, c] < threshold:
+            continue
         cx, cy, bw, bh = boxes[q]
         rect = (max(0, float((cx - bw / 2) * w)), max(0, float((cy - bh / 2) * h)),
                 min(w, float((cx + bw / 2) * w)), min(h, float((cy + bh / 2) * h)))
@@ -110,9 +112,26 @@ def detect(image: np.ndarray, min_score: float = 0.35) -> list[tuple[str, Rect, 
         raise
     except Exception as exc:
         raise VisualModelError("VISUAL_INFERENCE_FAILED") from exc
+    from ..vision import double_ring_seal
+
+    # Resolve only positive stamp geometry; do not guess from box aspect or colour alone.
+    stamps = [box for _, box, _ in hits if double_ring_seal(image, box)]
+    resolved = []
+    for kind, box, score in hits:
+        for seal in stamps:
+            area = (box[2]-box[0]) * (box[3]-box[1])
+            intersection = max(0, min(box[2], seal[2])-max(box[0], seal[0])) * max(0, min(box[3], seal[3])-max(box[1], seal[1]))
+            # A tile may report just an arc of the same stamp as a signature.
+            cx = (box[0]+box[2]-seal[0]-seal[2]) / max(seal[2]-seal[0], 1)
+            cy = (box[1]+box[3]-seal[1]-seal[3]) / max(seal[3]-seal[1], 1)
+            rim_fragment = intersection / area > .85 and cx*cx + cy*cy > .55
+            if overlap(box, seal) > .8 or rim_fragment:
+                kind = "SEAL"
+                break
+        resolved.append((kind, box, score))
     out = []
-    for hit in sorted(hits, key=lambda x: -x[2]):
-        if not any(hit[0] == old[0] and overlap(hit[1], old[1]) > .45 for old in out):
+    for hit in sorted(resolved, key=lambda x: -x[2]):
+        if not any(overlap(hit[1], old[1]) > (.45 if hit[0] == old[0] else .8) for old in out):
             out.append(hit)
     if len(out) > 100:
         raise VisualModelError("VISUAL_DETECTION_LIMIT_REQUIRES_REVIEW")

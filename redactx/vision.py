@@ -55,6 +55,38 @@ def _plausible_qr(p: np.ndarray, dpi: int) -> bool:
     return lo <= w <= hi and lo <= h <= hi and 0.75 <= w / max(h, 1) <= 1.33
 
 
+def _qr_finders(gray: np.ndarray, quad: np.ndarray) -> bool:
+    """Require three nested square finder patterns, even if the payload is damaged."""
+    target = np.array([[0, 0], [255, 0], [255, 255], [0, 255]], np.float32)
+    matrix = cv2.getPerspectiveTransform(quad.astype(np.float32), target)
+    crop = cv2.warpPerspective(gray, matrix, (256, 256), borderValue=255)
+    crop = cv2.copyMakeBorder(crop, 12, 12, 12, 12, cv2.BORDER_CONSTANT, value=255)
+    _, ink = cv2.threshold(crop, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    contours, hierarchy = cv2.findContours(ink, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    if hierarchy is None:
+        return False
+    corners = set()
+    for i, outer in enumerate(contours):
+        child = hierarchy[0, i, 2]
+        inner = hierarchy[0, child, 2] if child >= 0 else -1
+        if inner < 0:
+            continue
+        area = cv2.contourArea(outer)
+        if area < 100:
+            continue
+        x, y, w, h = cv2.boundingRect(outer)
+        if not (.7 <= w / h <= 1.4 and .3 <= cv2.contourArea(contours[child]) / area <= .85
+                and .08 <= cv2.contourArea(contours[inner]) / area <= .45):
+            continue
+        a, b, iw, ih = cv2.boundingRect(contours[inner])
+        cx, cy = x + w / 2 - 12, y + h / 2 - 12
+        if abs(a + iw / 2 - 12 - cx) > w * .2 or abs(b + ih / 2 - 12 - cy) > h * .2:
+            continue
+        if min(cx, 255 - cx) < 65 and min(cy, 255 - cy) < 65:
+            corners.add((cx > 127, cy > 127))
+    return len(corners) >= 3
+
+
 def codes(img: np.ndarray, dpi: int = 200) -> list[Rect]:
     """二维码与一维条码。"""
     out: list[Rect] = []
@@ -68,6 +100,8 @@ def codes(img: np.ndarray, dpi: int = 200) -> list[Rect]:
             pts = pts.reshape(1, 4, 2) if ok and pts is not None and _plausible_qr(pts.reshape(4, 2), dpi) else None
         if ok and pts is not None:
             for p in pts:
+                if not _qr_finders(gray, p):
+                    continue
                 xs, ys = p[:, 0], p[:, 1]
                 out.append((xs.min() - 6, ys.min() - 6, xs.max() + 6, ys.max() + 6))
     except cv2.error:
@@ -83,6 +117,47 @@ def codes(img: np.ndarray, dpi: int = 200) -> list[Rect]:
     except (cv2.error, AttributeError):
         pass
     return out
+
+
+def double_ring_seal(img: np.ndarray, rect: Rect) -> bool:
+    """Positive evidence for circular/oval stamps; open handwriting loops do not qualify."""
+    h, w = img.shape[:2]
+    x0, y0, x1, y1 = rect
+    # Model boxes may cut the outer ring by a few pixels.
+    pad = .08 * max(x1 - x0, y1 - y0)
+    crop = img[max(0, int(y0-pad)):min(h, int(y1+pad+1)), max(0, int(x0-pad)):min(w, int(x1+pad+1))]
+    if min(crop.shape[:2]) < 24:
+        return False
+    gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
+    if np.ptp(gray) < 20:
+        return False
+    _, ink = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    contours, _ = cv2.findContours(ink, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    angles = np.linspace(0, 2*np.pi, 96, endpoint=False)
+    for contour in contours:
+        if len(contour) < 12:
+            continue
+        (cx, cy), (a, b), degrees = cv2.fitEllipse(contour)
+        if min(a, b) < .6 * min(x1-x0, y1-y0) or min(a, b) / max(a, b) < .65:
+            continue
+        if not .88 <= cv2.contourArea(contour) / max(np.pi*a*b/4, 1) <= 1.1:
+            continue
+        theta = np.deg2rad(degrees)
+
+        def coverage(radii):
+            x = np.cos(angles)[:, None] * a/2 * radii
+            y = np.sin(angles)[:, None] * b/2 * radii
+            xs = np.rint(cx + x*np.cos(theta) - y*np.sin(theta)).astype(int)
+            ys = np.rint(cy + x*np.sin(theta) + y*np.cos(theta)).astype(int)
+            if (xs < 0).any() or (ys < 0).any() or (xs >= ink.shape[1]).any() or (ys >= ink.shape[0]).any():
+                return 0
+            return (ink[ys, xs].max(axis=1) > 0).mean()
+
+        if (coverage(np.linspace(.97, 1.01, 5)) > .8
+                and coverage(np.linspace(.88, .93, 6)) > .7
+                and coverage(np.array([.95])) < .35):
+            return True
+    return False
 
 
 def _line_kernel(length: int, angle: float) -> np.ndarray:

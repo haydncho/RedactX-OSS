@@ -163,6 +163,57 @@ def test_tiled_detections_return_page_coordinates(monkeypatch):
     assert any(hit[1] == (360, 440, 400, 480) for hit in hits)
 
 
+@pytest.mark.parametrize("color", [(105, 105, 105), (200, 20, 40)])
+def test_double_ring_stamp_is_not_reported_as_signature(monkeypatch, color):
+    import cv2
+
+    img = np.full((600, 600, 3), 255, np.uint8)
+    cv2.circle(img, (300, 300), 95, color, 4)
+    cv2.circle(img, (300, 300), 87, color, 2)
+    monkeypatch.setattr(rfdet, "_infer", lambda *a: [("SIGNATURE", (200, 200, 400, 400), .8)])
+    assert [h[0] for h in rfdet.detect(img)] == ["SEAL"]
+
+
+def test_overlapping_class_predictions_do_not_duplicate_object(monkeypatch):
+    monkeypatch.setattr(rfdet, "_infer", lambda *a: [
+        ("SEAL", (10, 10, 80, 80), .9), ("SIGNATURE", (11, 11, 79, 79), .7),
+        ("SIGNATURE", (100, 100, 150, 140), .8)])
+    hits = rfdet.detect(np.full((200, 200, 3), 255, np.uint8))
+    assert [h[0] for h in hits] == ["SEAL", "SIGNATURE"]
+
+
+def test_handwritten_loop_and_overlapping_separate_objects_are_preserved(monkeypatch):
+    import cv2
+    from redactx.vision import double_ring_seal
+
+    img = np.full((300, 300, 3), 255, np.uint8)
+    cv2.ellipse(img, (150, 150), (90, 55), 20, 0, 300, (20, 30, 100), 3)
+    assert not double_ring_seal(img, (40, 60, 260, 240))
+    monkeypatch.setattr(rfdet, "_infer", lambda *a: [
+        ("SEAL", (10, 10, 110, 110), .9), ("SIGNATURE", (40, 10, 140, 110), .8)])
+    assert len(rfdet.detect(img)) == 2  # Moderate overlap can be two real objects.
+
+
+def test_query_uses_winning_class_including_checkbox(monkeypatch):
+    class Name:
+        def __init__(self, name):
+            self.name = name
+
+    class Session:
+        def get_inputs(self):
+            return [Name("pixels")]
+
+        def get_outputs(self):
+            return [Name("boxes"), Name("logits")]
+
+        def run(self, *args):
+            return [np.array([[[.5, .5, .2, .2], [.8, .8, .1, .1]]]),
+                    np.array([[[2., 4., -20., -20.], [2., 1., 8., -20.]]])]
+
+    monkeypatch.setattr(rfdet, "_model", (Session(), {"mean": [0, 0, 0], "std": [1, 1, 1]}, "test"))
+    assert [h[0] for h in rfdet.detect(np.full((200, 200, 3), 255, np.uint8))] == ["SIGNATURE"]
+
+
 @pytest.mark.parametrize("rotation", [0, 90, 180, 270])
 def test_pipeline_rotated_coordinates_and_final_artifact(monkeypatch, tmp_path, rotation):
     from PIL import Image
