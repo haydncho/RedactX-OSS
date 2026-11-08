@@ -2,7 +2,9 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-**项目介绍页：[haydncho.github.io/RedactX-OSS](https://haydncho.github.io/RedactX-OSS/)**（截图、识别范围、工作原理、评估结果、部署步骤）
+**项目介绍页：[redactx.toras.dev](https://redactx.toras.dev/)**（截图、识别范围、工作原理、评估结果、部署步骤）
+
+**正式版：[v0.3.0](https://github.com/haydncho/RedactX-OSS/releases/tag/v0.3.0)** · [发布说明](docs/release-0.3.0.md) · [在线应用](https://redactx.toras.dev/app) · [API 文档](https://redactx.toras.dev/docs)。对外服务已启用印章、签名视觉增强；自部署默认关闭。
 
 病案等文档的本地脱敏服务。上传 PDF 或图片，自动识别患者与医护人员姓名、医院名称、证件号、电话、病案号、手写填写区、签名、印章等内容，按指定样式打码，输出栅格化重建后的 PDF。
 
@@ -195,6 +197,8 @@ uv pip install --python .venv/bin/python -e ".[dev,bench]"
 指标：应遮项被覆盖 ≥ 80% 记为遮全；应留项被覆盖超过 15% 记为误遮；与任何应遮项都不重叠的遮盖区域记为多遮。
 
 ## 性能
+
+以下为未启用视觉增强的基线数据。0.3.0 启用视觉增强后，14 页合成对比总耗时从 37.12 秒增加到 82.60 秒；容器内 20 页混合文档耗时 211.31 秒、采样内存峰值约 1.93 GB。测试设置与局限见 [视觉验收记录](docs/visual-acceptance-2026-11-07.md)，不代表真实病案上的准确率或性能承诺。
 
 `bench/perf.py` 用合成病案拼出约 100 页的文档，每份在独立进程中处理，测总耗时、每页耗时、首页耗时（含模型加载）与内存峰值：
 

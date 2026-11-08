@@ -37,7 +37,7 @@
 <header class="topbar">
   <a class="brand" href="#top" aria-label="锐消 RedactX 首页">
     <svg class="mark" aria-hidden="true" viewBox="0 0 24 24"><defs><linearGradient id="rxl-g" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#0070F3"/><stop offset=".45" stop-color="#7C3AED"/><stop offset=".75" stop-color="#EC4899"/><stop offset="1" stop-color="#F59E0B"/></linearGradient><linearGradient id="rxl-s" x1="12" y1="2" x2="12" y2="13" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity=".38"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs><rect x="2" y="2" width="20" height="20" rx="6" fill="url(#rxl-g)"/><rect x="2" y="2" width="20" height="20" rx="6" fill="url(#rxl-s)"/><rect x="6" y="6.6" width="12" height="2" rx="1" fill="#fff" fill-opacity=".62"/><rect x="6" y="10.5" width="9.5" height="3.2" rx="1.2" fill="#fff"/><rect x="6" y="15.6" width="8" height="2" rx="1" fill="#fff" fill-opacity=".62"/></svg>
-    <span>RedactX</span><span class="dot">·</span><span>锐消</span><span class="ver">v0.2.8</span>
+    <span>RedactX</span><span class="dot">·</span><span>锐消</span><span class="ver">v0.3.0</span>
   </a>
   <nav class="nav" aria-label="页面导航">
     <a href="#features">功能</a>
@@ -85,14 +85,14 @@
         <div class="group"><h3><i class="g-org"></i>机构与地址</h3><p>医院及机构名称、单位名称、地址</p></div>
         <div class="group"><h3><i class="g-numbers"></i>证件与号码</h3><p>身份证、护照、港澳台通行证、军官证、手机与座机、银行卡、统一社会信用代码、邮箱、车牌、微信号</p></div>
         <div class="group"><h3><i class="g-medical"></i>医疗标识</h3><p>病案号、住院号、门诊号、医保卡号、床号、检验与影像编号</p></div>
-        <div class="group"><h3><i class="g-handwriting"></i>手写与印章</h3><p>手写填写区、手写与电子签名、红章与淡色章</p></div>
+        <div class="group"><h3><i class="g-handwriting"></i>手写与印章</h3><p>手写填写区、手写与电子签名、红章与淡色章；0.3.0 可选本地视觉模型增强灰章与签名检测，在线演示已启用</p></div>
         <div class="group"><h3><i class="g-images"></i>图片与水印</h3><p>医院 Logo、二维码与条码；院名水印在识别前整页去除</p></div>
       </div>
 
       <div class="cards">
         <article class="card"><div class="card-head"><svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg><h3>七种打码样式</h3></div><p>浅色标签、背景色擦除、代号替换、安全马赛克、斜线花纹、图像修复、黑色块。所有样式都先擦除原像素，再绘制外观，输出栅格化重建，文字层与元数据一并清除。</p></article>
         <article class="card"><div class="card-head"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg><h3>复核台</h3></div><p>在页面上拖出新框补遮；保留原件的任务还能删框、改框、改类型，保存后只重新打码改动的页。快捷键与修改标记便于大批量标注。</p></article>
-        <article class="card"><div class="card-head"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg><h3>出厂自检</h3></div><p>扫描页打码后再识别一遍，补打遗漏的号码与姓名；文字层页默认不做，省下数倍时间。</p></article>
+        <article class="card"><div class="card-head"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg><h3>出厂自检与视觉复核</h3></div><p>扫描页再识别并补打遗漏的号码与姓名。启用视觉模型后，对最终文件检查印章、签名残留；疑似残留与日期重叠框提示人工复核，人工改框后重新检查。</p></article>
         <article class="card"><div class="card-head"><svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg><h3>表单模板</h3></div><p>污渍、印章压住字段名时，按本单位表单的模板推算字段位置，照常遮盖内容。模板用空白表单一条命令生成。</p></article>
         <article class="card"><div class="card-head"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg><h3>隐私设计</h3></div><p>上传的原文件处理完立即删除；原文件名只随任务保存在本机、仅提交者可见；结果按保留时长自动清除，也可随时删除。标注导出默认关闭，开启须设置 API Key 并记审计日志。</p></article>
         <article class="card"><div class="card-head"><svg class="ic" aria-hidden="true"><use href="#i-code"/></svg><h3>接口与批量</h3></div><p>异步任务、同步小文件、打码报告（每处遮盖的类型、来源与坐标，不含原文）与预览图接口，便于接入病案系统批量处理。</p></article>
@@ -106,10 +106,10 @@
       <ol class="steps">
         <li><b>渲染与去水印</b><span>PDF 结构里的水印对象直接删除；页面上的院名水印按颜色与角度整页擦除，只擦水印像素。</span></li>
         <li><b>文字识别</b><span>文字层直接读取；扫描件用本地 OCR（RapidOCR，PP-OCR 模型），横放页自动转正。</span></li>
-        <li><b>多路识别</b><span>号码规则与校验位；字段锚定（“姓名：”后的内容、表格里的签名列）；正文人名识别（本地 NER 模型）；表单模板兜底。</span></li>
+        <li><b>多路识别</b><span>号码规则与校验位；字段锚定；正文人名识别；表单模板兜底。可选 RF-DETR 模型在原件去水印前检测印章、签名，文字层页同样适用。</span></li>
         <li><b>全文追踪</b><span>在字段里认出的姓名、号码作为种子，在全文其他位置一并遮盖，允许一个错字。</span></li>
         <li><b>打码与自检</b><span>手写签名沿笔画整体纳入；按样式擦除重绘；扫描页再识别一遍补打遗漏。</span></li>
-        <li><b>重建输出</b><span>每页栅格化后重建 PDF，不留文字层与元数据；报告只记类型与坐标，不含原文。</span></li>
+        <li><b>重建输出</b><span>每页栅格化后重建 PDF，不留文字层与元数据；启用视觉模型时再次检查实际输出。报告记录类型、坐标和复核状态，不含原文。</span></li>
       </ol>
     </div>
   </section>
@@ -129,7 +129,9 @@
         <div class="stat"><span class="stat-ic"><svg class="ic" aria-hidden="true"><use href="#i-scan"/></svg></span><b>约 2 秒/页</b><span>200 DPI 扫描件（含扫描页自检）</span></div>
         <div class="stat"><span class="stat-ic"><svg class="ic" aria-hidden="true"><use href="#i-cpu"/></svg></span><b>约 3 GB</b><span>内存峰值（100 页扫描件）</span></div>
       </div>
-      <p class="note">Apple M4、16 GB，纯 CPU。</p>
+      <p class="note">以上为未启用视觉增强的基线数据，Apple M4、16 GB，纯 CPU。</p>
+      <div class="head"><h3>0.3.0 视觉增强验收</h3><p>14 页合成对比：258 项应遮内容全部覆盖，106 项应保留内容未误遮；总耗时从 37.12 秒增加到 82.60 秒。容器内 20 页混合文档耗时 211.31 秒，采样内存峰值约 1.93 GB。</p></div>
+      <p class="note">模型仍可能漏检或混淆印章、签名类别，低质量图像和日期冲突需人工复核；合成结果不能代替真实临床样本验证。详见 <a href="https://github.com/haydncho/RedactX-OSS/blob/main/docs/visual-acceptance-2026-11-07.md">视觉验收记录</a>。</p>
     </div>
   </section>
 
@@ -152,7 +154,7 @@ uv pip install --python .venv/bin/python -e ".[dev,ner-export]"
         </div>
         <div class="step">
           <h3><span class="n">3</span>打开浏览器</h3>
-          <p>访问 <code>http://127.0.0.1:8090</code> 上传文件；接口文档在 <code>/docs</code>。建议 16 GB 内存（容器限制 6 GB、6 核）。</p>
+          <p>访问 <code>http://127.0.0.1:8090</code> 上传文件；接口文档在 <code>/docs</code>。建议 16 GB 内存（容器限制 6 GB、6 核）。印章、签名视觉模型默认关闭；需准备模型并设置 <code>REDACTX_VISUAL_ENABLED=1</code>，步骤及许可见 <a href="https://github.com/haydncho/RedactX-OSS/blob/main/docs/visual-model.md">视觉模型说明</a>。</p>
         </div>
       </div>
       <div class="api">
@@ -174,7 +176,7 @@ curl -o 脱敏.pdf http://127.0.0.1:8090/v1/jobs/job_…/result</code></pre>
   <div class="wrap foot-grid">
     <div>
       <p><b>锐消 RedactX</b> · Apache-2.0 开源 · <a href="https://github.com/haydncho/RedactX-OSS" rel="noopener">GitHub</a> · <a href="https://github.com/haydncho/RedactX-OSS/blob/main/CHANGELOG.md" rel="noopener">更新日志</a></p>
-      <p class="muted">第三方模型：RapidOCR 附带的 PP-OCR 模型（Apache-2.0）；正文人名识别 shibing624/bert4ner-base-chinese（Apache-2.0）。</p>
+      <p class="muted">第三方模型：RapidOCR 附带的 PP-OCR 模型（Apache-2.0）；正文人名识别 shibing624/bert4ner-base-chinese（Apache-2.0）；可选 BlueCopa RF-DETR 印章、签名模型（Apache-2.0，固定版本 ONNX）。</p>
     </div>
     <p class="muted">本站只是项目介绍，不收集任何文件。“在线演示”跳转到项目负责人本机临时开放的服务，仅供演示，请勿上传真实病案。页面上的截图均为合成数据。</p>
   </div>
