@@ -2,18 +2,22 @@
 (() => {
   const states = new WeakMap();
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
-  const paint = (scroller, opacity) => scroller.style.setProperty("--scrollbar-thumb",
-    `color-mix(in srgb, var(--ink, #171717) ${40 * opacity}%, transparent)`);
+  const paint = (scroller, opacity) => {
+    const thumb = `color-mix(in srgb, var(--ink, #171717) ${75 * opacity}%, transparent)`;
+    scroller.style.setProperty("--scrollbar-thumb", thumb);
+    scroller.style.scrollbarColor = `${thumb} transparent`;
+  };
   function hide(scroller, state) {
     scroller.removeAttribute("data-scrolling");
     const start = performance.now();
     function fade(now) {
-      const progress = reducedMotion.matches ? 1 : Math.min(1, (now - start) / 350);
+      const progress = reducedMotion.matches ? 1 : Math.min(1, (now - start) / 450);
       if (progress < 1 && scroller.isConnected) {
         paint(scroller, 1 - progress);
         state.frame = requestAnimationFrame(fade);
       } else {
         scroller.style.removeProperty("--scrollbar-thumb");
+        scroller.style.removeProperty("scrollbar-color");
         states.delete(scroller);
       }
     }
@@ -28,7 +32,7 @@
     states.set(scroller, state);
     scroller.setAttribute("data-scrolling", "");
     paint(scroller, 1);
-    state.timer = setTimeout(() => hide(scroller, state), 900);
+    state.timer = setTimeout(() => hide(scroller, state), 1400);
   }, { capture: true, passive: true });
   document.documentElement.classList.add("auto-scrollbars");
 })();

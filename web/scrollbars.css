@@ -5,8 +5,8 @@
   scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 :where(html.auto-scrollbars, .auto-scrollbars *)::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   background: transparent;
 }
 :where(html.auto-scrollbars, .auto-scrollbars *)::-webkit-scrollbar-track,
@@ -14,12 +14,22 @@
 :where(html.auto-scrollbars, .auto-scrollbars *)::-webkit-scrollbar-button { display: none; }
 :where(html.auto-scrollbars, .auto-scrollbars *)::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb);
-  border: 2px solid transparent;
+  border: 1px solid transparent;
   background-clip: padding-box;
   border-radius: 999px;
 }
+/* Explicit active colors also work when a browser does not update custom properties in scrollbar pseudo-elements. */
+html.auto-scrollbars[data-scrolling],
+.auto-scrollbars [data-scrolling] { scrollbar-color: #777 transparent; }
+html.auto-scrollbars[data-scrolling]::-webkit-scrollbar-thumb,
+.auto-scrollbars [data-scrolling]::-webkit-scrollbar-thumb { background: #777; }
+html[data-theme="dark"].auto-scrollbars[data-scrolling],
+html[data-theme="dark"].auto-scrollbars [data-scrolling] { scrollbar-color: #aaa transparent; }
+html[data-theme="dark"].auto-scrollbars[data-scrolling]::-webkit-scrollbar-thumb,
+html[data-theme="dark"].auto-scrollbars [data-scrolling]::-webkit-scrollbar-thumb { background: #aaa; }
 /* Keep system contrast controls accessible. */
 @media (forced-colors: active) {
-  :where(html.auto-scrollbars, .auto-scrollbars *) { scrollbar-color: auto; }
-  :where(html.auto-scrollbars, .auto-scrollbars *)::-webkit-scrollbar-thumb { background: ButtonText; }
+  html.auto-scrollbars, .auto-scrollbars * { scrollbar-color: auto !important; }
+  html.auto-scrollbars::-webkit-scrollbar-thumb,
+  .auto-scrollbars *::-webkit-scrollbar-thumb { background: ButtonText !important; }
 }
