@@ -43,6 +43,9 @@ bench/train/
 train/runs/
 train/data/
 site/_redirects
+# Generated from web/ by the Pages workflows and deploy/site.sh.
+site/scrollbars.css
+site/scrollbars.js
 
 # Cloudflare wrangler（部署介绍站、网关时）生成的本地缓存
 .wrangler/

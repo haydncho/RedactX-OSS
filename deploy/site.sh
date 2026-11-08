@@ -7,5 +7,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="${1:-https://redactx.toras.dev/app}"
+# Ship identical scrollbar assets with both independent hosting targets.
+cp "$ROOT/web/scrollbars.css" "$ROOT/web/scrollbars.js" "$ROOT/site/"
 printf '# 在线演示入口（由 deploy/site.sh 生成，不入库）\n/app  %s  302\n' "$APP" > "$ROOT/site/_redirects"
 npx --yes wrangler@4 pages deploy "$ROOT/site" --project-name redactx-oss --branch main --commit-dirty=true
